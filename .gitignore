@@ -1,0 +1,7 @@
+.vscode
+
+*testing.txt
+*.exe
+*.pdb
+*.bin
+ols.json
