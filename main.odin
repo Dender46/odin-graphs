@@ -65,6 +65,10 @@ main :: proc() {
         window.width = rl.GetScreenWidth()
         window.height = rl.GetScreenHeight()
 
+        // TODO: find better place for this variable so we can update it and reference everywhere
+        xAxisLine.x1 = window.width - graphMargin
+        xAxisLine.y  = window.height - graphMargin - 80
+
         rl.BeginDrawing()
 
         @(static) zoomLevel: f32 = 60
