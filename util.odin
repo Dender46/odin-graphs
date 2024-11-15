@@ -1,5 +1,6 @@
 package graphs
 
+import "core:math"
 import rl "vendor:raylib"
 
 // =============== RAYLIB ===============
@@ -31,6 +32,23 @@ draw_vertical_line :: proc(x: i32, color: rl.Color) {
 
 draw_horizontal_line :: proc(y: i32, color: rl.Color) {
     rl.DrawLine(0, y, window.width, y, color)
+}
+
+// =============== MATH ===============
+
+// Freya's smooth lerp
+exp_decay :: proc(a, b, dt: f32) -> f32 {
+    decay: f32 = 16 // approx. from 1 to 25
+    return b+(a-b)*math.exp(-decay*dt)
+}
+
+inv_lerp :: proc(a, b, val: f32) -> f32 {
+    return (val - a) / (b - a)
+}
+
+remap :: proc(iMin, iMax, oMin, oMax, val: f32) -> f32 {
+    t := inv_lerp(iMin, iMax, val)
+    return math.lerp(oMin, oMax, t)
 }
 
 // =============== OTHER ===============

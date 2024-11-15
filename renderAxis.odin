@@ -4,9 +4,11 @@ import "core:fmt"
 import "core:math"
 import rl "vendor:raylib"
 
-render_x_axis :: proc(zoomLevel: f32) {
+render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
+    plotOffset := -plotOffset
     segmentsCount: f32 = 10
     segmentTime := findAppropriateInterval(zoomLevel, segmentsCount)
+    segmentsCount += 2 // increasing count so we can try to draw more segments than expected
 
     {// Axis X line
         using xAxisLine
@@ -14,30 +16,26 @@ render_x_axis :: proc(zoomLevel: f32) {
     }
 
     buf1 : [MIN_HMSMS_LEN]u8
-    segmentTimeAccum: f32 = 0
-    for i in 0..=segmentsCount+8 {
-        using xAxisLine
+    segmentsOffset := math.floor(plotOffset / segmentTime)
 
-        lerpT := segmentTimeAccum / zoomLevel
-        if (lerpT > 1.0) {
-            rl.DrawText(fmt.caprintf("drawn segments: %.0f", i), i32(x), 150, 20, GRAPH_COLOR)
-            break
-        }
-        pos := i32(math.lerp(f32(x0), f32(x1), lerpT))
+    for i := segmentsOffset * segmentTime;
+        i <= segmentsCount * segmentTime + (segmentsOffset * segmentTime);
+        i += segmentTime
+    {
+        pos := i32(remap(plotOffset, zoomLevel + plotOffset, f32(xAxisLine.x0), f32(xAxisLine.x1), i))
+
         markLineSize: i32 = 15
-        rl.DrawLine(pos, y+markLineSize, pos, y-markLineSize, GRAPH_COLOR)
+        rl.DrawLine(pos, xAxisLine.y + markLineSize, pos, xAxisLine.y - markLineSize, GRAPH_COLOR)
 
         subGraph: LineDimensions = {
-            x = pos,
-            y0 = y-markLineSize,
-            y1 = graphMargin
+           x = pos,
+           y0 = xAxisLine.y - markLineSize,
+           y1 = graphMargin
         }
         rl.DrawLine(subGraph.x, subGraph.y0, subGraph.x, subGraph.y1, SUB_GRAPH_COLOR)
 
-        time := time_to_string_hmsms(i64(segmentTimeAccum) * 1_000_000_000, buf1[:])
-        draw_centered_text(fmt.caprintf("%s:%s", time[3:5], time[6:8]), pos, y+markLineSize*2, 0, 16, GRAPH_COLOR)
-
-        segmentTimeAccum += segmentTime
+        time := time_to_string_hmsms(i64(i) * 1_000_000_000, buf1[:])
+        draw_centered_text(fmt.caprintf("%s:%s", time[3:5], time[6:8]), pos, xAxisLine.y + markLineSize*2, 0, 16, GRAPH_COLOR)
     }
 }
 

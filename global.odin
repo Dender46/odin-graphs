@@ -20,7 +20,7 @@ GRAPH_COLOR         :: rl.GRAY
 SUB_GRAPH_COLOR     :: rl.LIGHTGRAY
 DEBUG_BOUNDARY      :: true
 
-graphMargin: i32    : 40
+graphMargin: i32    : 200
 
 xAxisLine: LineDimensions = {
     x0 = graphMargin,
