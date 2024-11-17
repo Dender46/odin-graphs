@@ -12,7 +12,7 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
     plotOffset := -plotOffset
     segmentsCount: f32 = 10
     segmentTime := findAppropriateInterval(zoomLevel, segmentsCount)
-    segmentsCount += 2 // increasing count so we can try to draw more segments than expected
+    segmentsCount += 8 // increasing count so we can try to draw more segments than expected
 
     {// Axis X line
         using xAxisLine
@@ -27,6 +27,12 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
         i += segmentTime
     {
         pos := i32(remap(plotOffset, zoomLevel + plotOffset, f32(xAxisLine.x0), f32(xAxisLine.x1), i))
+        if xAxisLine.x0 > pos {
+            continue
+        }
+        if pos > xAxisLine.x1 {
+            break
+        }
 
         markLineSize: i32 = 15
         rl.DrawLine(pos, xAxisLine.y + markLineSize, pos, xAxisLine.y - markLineSize, GRAPH_COLOR)
