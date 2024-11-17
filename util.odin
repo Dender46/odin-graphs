@@ -16,7 +16,7 @@ LineDimensions :: struct {
     },
 }
 
-draw_centered_text :: proc(text: cstring, posX, posY: i32, rot, fontSize: f32, tint: rl.Color) {
+draw_centered_text :: proc "contextless" (text: cstring, posX, posY: i32, rot, fontSize: f32, tint: rl.Color) {
     spacing := fontSize / 10
     textSize := rl.MeasureTextEx(rl.GetFontDefault(), text, fontSize, spacing)
     pivot := textSize / 2
@@ -26,27 +26,27 @@ draw_centered_text :: proc(text: cstring, posX, posY: i32, rot, fontSize: f32, t
     rl.DrawTextPro(rl.GetFontDefault(), text, {f32(posX), f32(posY)}, pivot, rot, fontSize, spacing, tint)
 }
 
-draw_vertical_line :: proc(x: i32, color: rl.Color) {
+draw_vertical_line :: proc "contextless" (x: i32, color: rl.Color) {
     rl.DrawLine(x, 0, x, window.height, color)
 }
 
-draw_horizontal_line :: proc(y: i32, color: rl.Color) {
+draw_horizontal_line :: proc "contextless" (y: i32, color: rl.Color) {
     rl.DrawLine(0, y, window.width, y, color)
 }
 
 // =============== MATH ===============
 
 // Freya's smooth lerp
-exp_decay :: proc(a, b, dt: f32) -> f32 {
+exp_decay :: proc "contextless" (a, b, dt: f32) -> f32 {
     decay: f32 = 16 // approx. from 1 to 25
     return b+(a-b)*math.exp(-decay*dt)
 }
 
-inv_lerp :: proc(a, b, val: f32) -> f32 {
+inv_lerp :: proc "contextless" (a, b, val: f32) -> f32 {
     return (val - a) / (b - a)
 }
 
-remap :: proc(iMin, iMax, oMin, oMax, val: f32) -> f32 {
+remap :: proc "contextless" (iMin, iMax, oMin, oMax, val: f32) -> f32 {
     t := inv_lerp(iMin, iMax, val)
     return math.lerp(oMin, oMax, t)
 }

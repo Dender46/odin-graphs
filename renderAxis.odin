@@ -4,6 +4,10 @@ import "core:fmt"
 import "core:math"
 import rl "vendor:raylib"
 
+x_axis_width :: proc "contextless" () -> f32 {
+    return abs(f32(xAxisLine.x1 - xAxisLine.x0))
+}
+
 render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
     plotOffset := -plotOffset
     segmentsCount: f32 = 10
@@ -16,10 +20,10 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
     }
 
     buf1 : [MIN_HMSMS_LEN]u8
-    segmentsOffset := math.floor(plotOffset / segmentTime)
+    segmentsOffsetInTime := math.floor(plotOffset / segmentTime) * segmentTime
 
-    for i := segmentsOffset * segmentTime;
-        i <= segmentsCount * segmentTime + (segmentsOffset * segmentTime);
+    for i := segmentsOffsetInTime;
+        i <= segmentsCount * segmentTime + segmentsOffsetInTime;
         i += segmentTime
     {
         pos := i32(remap(plotOffset, zoomLevel + plotOffset, f32(xAxisLine.x0), f32(xAxisLine.x1), i))
@@ -42,7 +46,7 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
 // Figure out decent amount of segments
 // in terms of 'seconds in interval' (should be 5, 10, 15, 30, 60, 120, 300...)
 @private
-findAppropriateInterval :: proc(zoomLvl, intervalCount: f32) -> (intervalInS: f32) {
+findAppropriateInterval :: proc "contextless" (zoomLvl, intervalCount: f32) -> (intervalInS: f32) {
     // To make less segments than we won't - increase slightly segment duration
     @(static) magicFix: f32 = 1.2
     // rl.GuiSlider({0,0,500,50}, "", fmt.caprint(magicFix), &magicFix, 1, 2)

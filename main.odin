@@ -63,7 +63,7 @@ main :: proc() {
     for i in 0..<pointsCount {
         append(&pointsData, rand.float32_range(10, 60))
     }
-    
+
     for !rl.WindowShouldClose() {
         window.width = rl.GetScreenWidth()
         window.height = rl.GetScreenHeight()
@@ -72,13 +72,23 @@ main :: proc() {
         xAxisLine.x1 = window.width - graphMargin
         xAxisLine.y  = window.height - graphMargin - 80
 
+        {// Zoom slider, before calc of mouse/zoom offsets to avoid jitter when zooming in some cases
+            zoomLevelSliderRect: rl.Rectangle = {
+                0, f32(window.height-30),
+                f32(window.width-100), 30
+            }
+            rl.GuiSlider(zoomLevelSliderRect, "", fmt.caprintf("%f = %fs", zoomLevel, zoomLevel / 60), &zoomLevel, 0, pointsCount)
+            // zoomLevel = math.floor(zoomLevel)
+        }
+
         if rl.IsMouseButtonDown(.LEFT) {
             mouseDelta := rl.GetMouseDelta();
             offsetX += mouseDelta.x
-            offsetX = clamp(offsetX, -(zoomLevel - offsetX), 0)
         }
 
-        plotOffset = remap(0, f32(xAxisLine.x1 - graphMargin), 0, zoomLevel, offsetX)
+        offsetX = clamp(offsetX, -((pointsCount/zoomLevel-1)*x_axis_width()), 0)
+        plotOffset = remap(0, x_axis_width(), 0, zoomLevel, offsetX)
+        plotOffset = clamp(plotOffset, -(pointsCount-zoomLevel), 0)
 
         rl.BeginDrawing()
 
@@ -88,15 +98,6 @@ main :: proc() {
         if wheelMove := rl.GetMouseWheelMoveV().y; wheelMove != 0 {
             zoomLevel *= math.exp(zoomExp * wheelMove)
             zoomLevel = clamp(zoomLevel, 1, pointsCount)
-        }
-
-        {// Zoom slider
-            zoomLevelSliderRect: rl.Rectangle = {
-                0, f32(window.height-30),
-                f32(window.width-100), 30
-            }
-            rl.GuiSlider(zoomLevelSliderRect, "", fmt.caprintf("%f = %fs", zoomLevel, zoomLevel / 60), &zoomLevel, 0, pointsCount)
-            // zoomLevel = math.floor(zoomLevel)
         }
 
         render_x_axis(plotOffset, offsetX, zoomLevel)
