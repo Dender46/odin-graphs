@@ -19,7 +19,7 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
         rl.DrawLine(x0, y, x1, y, GRAPH_COLOR)
     }
 
-    buf1 : [MIN_HMSMS_LEN]u8
+    buf : [MIN_HMSMS_LEN]u8
     segmentsOffsetInTime := math.floor(plotOffset / segmentTime) * segmentTime
 
     for i := segmentsOffsetInTime;
@@ -44,8 +44,14 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
         }
         rl.DrawLine(subGraph.x, subGraph.y0, subGraph.x, subGraph.y1, SUB_GRAPH_COLOR)
 
-        time := time_to_string_hmsms(i64(i) * 1_000_000_000, buf1[:])
-        draw_centered_text(fmt.caprintf("%s:%s", time[3:5], time[6:8]), pos, xAxisLine.y + markLineSize*2, 0, 16, GRAPH_COLOR)
+        time := time_to_string_hmsms(i64(i) * 1_000_000_000, buf[:])
+        h, m, s, ms := clock_from_nanoseconds(i64(i) * 1_000_000_000)
+        graphHintLabel: cstring
+        switch {
+            case h > 0: graphHintLabel = fmt.ctprintf("%s:%s:%s", time[0:2], time[3:5], time[6:8])
+            case:       graphHintLabel = fmt.ctprintf("%s:%s", time[3:5], time[6:8])
+        }
+        draw_centered_text(graphHintLabel, pos, xAxisLine.y + markLineSize*2, 0, 16, GRAPH_COLOR)
     }
 }
 
@@ -57,30 +63,20 @@ findAppropriateInterval :: proc "contextless" (zoomLvl, intervalCount: f32) -> (
     @(static) magicFix: f32 = 1.2
     // rl.GuiSlider({0,0,500,50}, "", fmt.caprint(magicFix), &magicFix, 1, 2)
     segmentDuration := zoomLvl / intervalCount * magicFix
-    if segmentDuration <= 1 {
-        return 1
-    }
-    if inbetween(segmentDuration, 1, 2) {
-        return closesTo(segmentDuration, 1, 2)
-    }
-    if inbetween(segmentDuration, 2, 5) {
-        return closesTo(segmentDuration, 2, 5)
-    }
-    if inbetween(segmentDuration, 5, 10) {
-        return closesTo(segmentDuration, 5, 10)
-    }
-    if inbetween(segmentDuration, 10, 15) {
-        return closesTo(segmentDuration, 10, 15)
+
+    switch segmentDuration {
+        case -1..<1: return 1
+        case 1..<2: return closesTo(segmentDuration, 1, 2)
+        case 2..<5: return closesTo(segmentDuration, 2, 5)
+        case 5..<10: return closesTo(segmentDuration, 5, 10)
+        case 10..<15: return closesTo(segmentDuration, 10, 15)
+        case 120..<300: return closesTo(segmentDuration, 120, 300)
     }
 
     for interval: f32 = 15; interval <= 60; interval *= 2 {
         if inbetween(segmentDuration, interval, interval*2) {
             return closesTo(segmentDuration, interval, interval*2)
         }
-    }
-
-    if inbetween(segmentDuration, 120, 300) {
-        return closesTo(segmentDuration, 120, 300)
     }
 
     for interval: f32 = 300; interval <= 900; interval += 300 {

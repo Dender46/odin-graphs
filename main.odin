@@ -55,6 +55,7 @@ main :: proc() {
 
     offsetX: f32
     zoomLevel: f32 = 60
+    targetZoomLevel: f32 = zoomLevel
     plotOffset: f32
 
     pointsCount: f32 = 2400
@@ -77,8 +78,7 @@ main :: proc() {
                 0, f32(window.height-30),
                 f32(window.width-100), 30
             }
-            rl.GuiSlider(zoomLevelSliderRect, "", fmt.caprintf("%f = %fs", zoomLevel, zoomLevel / 60), &zoomLevel, 0, pointsCount)
-            // zoomLevel = math.floor(zoomLevel)
+            rl.GuiSlider(zoomLevelSliderRect, "", fmt.caprintf("%f = %fs", zoomLevel, zoomLevel / 60), &targetZoomLevel, 0, pointsCount)
         }
 
         if rl.IsMouseButtonDown(.LEFT) {
@@ -96,21 +96,23 @@ main :: proc() {
         @(static) zoomExp: f32 = -0.07
         // rl.GuiSlider({0,50,f32(window.width-100),30}, "", fmt.caprint(zoomExp), &zoomExp, -0.5, -0.001)
         if wheelMove := rl.GetMouseWheelMoveV().y; wheelMove != 0 {
-            zoomLevel *= math.exp(zoomExp * wheelMove)
-            zoomLevel = clamp(zoomLevel, 1, pointsCount)
+            targetZoomLevel *= math.exp(zoomExp * wheelMove)
+            targetZoomLevel = clamp(targetZoomLevel, 1, pointsCount)
         }
+
+        zoomLevel = exp_decay(zoomLevel, targetZoomLevel, 16, rl.GetFrameTime())
 
         render_x_axis(plotOffset, offsetX, zoomLevel)
 
         // Render plot line
-        if true {
+        if false {
             for i in i32(-plotOffset)..<i32(zoomLevel-plotOffset) {
                 index := clamp(i, 0, i32(pointsCount-2))
                 posBegin := rl.Vector2{
                     math.lerp(f32(xAxisLine.x0), f32(xAxisLine.x1), f32(index)/zoomLevel),
                     math.lerp(f32(0), f32(xAxisLine.y), pointsData[index]/60) // TODO: use yAxisLine TODO: change lerpT
                 }
-    
+
                 posEnd   := rl.Vector2{
                     math.lerp(f32(xAxisLine.x0), f32(xAxisLine.x1), f32(index+1)/zoomLevel),
                     math.lerp(f32(0), f32(xAxisLine.y), pointsData[index+1]/60) // TODO: use yAxisLine TODO: change lerpT

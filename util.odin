@@ -37,8 +37,11 @@ draw_horizontal_line :: proc "contextless" (y: i32, color: rl.Color) {
 // =============== MATH ===============
 
 // Freya's smooth lerp
-exp_decay :: proc "contextless" (a, b, dt: f32) -> f32 {
-    decay: f32 = 16 // approx. from 1 to 25
+// a - from
+// b - to
+// decay - approx. from 1 (slow) to 25 (fast)
+// dt - deltaTime
+exp_decay :: proc "contextless" (a, b, decay, dt: f32) -> f32 {
     return b+(a-b)*math.exp(-decay*dt)
 }
 
