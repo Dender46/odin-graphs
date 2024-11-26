@@ -5,6 +5,12 @@ import rl "vendor:raylib"
 
 // =============== RAYLIB ===============
 
+// These values are identical in raygui.h, but they are static to that file and not exposed
+// they are recreated here so we can have same functionality
+guiControlExclusiveMode := false
+guiControlExclusiveRec := rl.Rectangle{ 0, 0, 0, 0 }
+
+
 LineDimensions :: struct {
     using _ : struct #raw_union {
         using _: struct { x0, x1: i32 },
@@ -32,6 +38,29 @@ draw_vertical_line :: proc "contextless" (x: i32, color: rl.Color) {
 
 draw_horizontal_line :: proc "contextless" (y: i32, color: rl.Color) {
     rl.DrawLine(0, y, window.width, y, color)
+}
+
+// Sets guiControlExclusiveMode, guiControlExclusiveRec, so we can tell if element is being manipulated
+// even if mouse cursor is outside bounds of slider
+GuiSlider_Custom :: proc(bounds: rl.Rectangle, textLeft: cstring, textRight: cstring, value: ^f32, minValue: f32, maxValue: f32) {
+    rl.GuiSlider(bounds, textLeft, textRight, value, minValue, maxValue)
+
+    if rl.GuiState(rl.GuiGetState()) != .STATE_DISABLED && !rl.GuiIsLocked() {
+        mousePoint := rl.GetMousePosition();
+
+        if guiControlExclusiveMode { // Allows to keep dragging outside of bounds
+            if !rl.IsMouseButtonDown(.LEFT) {
+                guiControlExclusiveMode = false;
+                guiControlExclusiveRec = rl.Rectangle{ 0, 0, 0, 0 }
+            }
+        }
+        else if rl.CheckCollisionPointRec(mousePoint, bounds) {
+            if rl.IsMouseButtonDown(.LEFT) {
+                guiControlExclusiveMode = true;
+                guiControlExclusiveRec = bounds; // Store bounds as an identifier when dragging starts
+            }
+        }
+    }
 }
 
 // =============== MATH ===============

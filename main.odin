@@ -78,10 +78,10 @@ main :: proc() {
                 0, f32(window.height-30),
                 f32(window.width-100), 30
             }
-            rl.GuiSlider(zoomLevelSliderRect, "", fmt.caprintf("%f = %fs", zoomLevel, zoomLevel / 60), &targetZoomLevel, 0, pointsCount)
+            GuiSlider_Custom(zoomLevelSliderRect, "", fmt.caprintf("%f = %fs", zoomLevel, zoomLevel / 60), &targetZoomLevel, 0, pointsCount)
         }
 
-        if rl.IsMouseButtonDown(.LEFT) {
+        if rl.IsMouseButtonDown(.LEFT) && !guiControlExclusiveMode {
             mouseDelta := rl.GetMouseDelta();
             offsetX += mouseDelta.x
         }
@@ -90,9 +90,6 @@ main :: proc() {
         plotOffset = remap(0, x_axis_width(), 0, zoomLevel, offsetX)
         plotOffset = clamp(plotOffset, -(pointsCount-zoomLevel), 0)
 
-        rl.BeginDrawing()
-
-
         @(static) zoomExp: f32 = -0.07
         // rl.GuiSlider({0,50,f32(window.width-100),30}, "", fmt.caprint(zoomExp), &zoomExp, -0.5, -0.001)
         if wheelMove := rl.GetMouseWheelMoveV().y; wheelMove != 0 {
@@ -100,10 +97,11 @@ main :: proc() {
             targetZoomLevel = clamp(targetZoomLevel, 1, pointsCount)
         }
 
-        zoomLevel = exp_decay(zoomLevel, targetZoomLevel, 16, rl.GetFrameTime())
+        zoomLevel = exp_decay(zoomLevel, targetZoomLevel, 18, rl.GetFrameTime())
 
+        rl.BeginDrawing()
         render_x_axis(plotOffset, offsetX, zoomLevel)
-
+        
         // Render plot line
         if false {
             for i in i32(-plotOffset)..<i32(zoomLevel-plotOffset) {
