@@ -58,7 +58,7 @@ main :: proc() {
     targetZoomLevel: f32 = zoomLevel
     plotOffset: f32
 
-    pointsCount: f32 = 2400
+    pointsCount: f32 = 24000
     pointsData: [dynamic]f32
     reserve(&pointsData, u32(pointsCount))
     for i in 0..<pointsCount {
@@ -100,10 +100,12 @@ main :: proc() {
         zoomLevel = exp_decay(zoomLevel, targetZoomLevel, 18, rl.GetFrameTime())
 
         rl.BeginDrawing()
+        rl.ClearBackground(rl.WHITE)
+
         render_x_axis(plotOffset, offsetX, zoomLevel)
         
         // Render plot line
-        if false {
+        if true {
             for i in i32(-plotOffset)..<i32(zoomLevel-plotOffset) {
                 index := clamp(i, 0, i32(pointsCount-2))
                 posBegin := rl.Vector2{
@@ -125,8 +127,7 @@ main :: proc() {
         //rl.GuiSlider({0,0, 100,30}, "", "", &x, 0, f32(window.width) / 2)
         //rl.GuiSlider({0,60,100,30}, "", "", &y, 0, f32(window.height) / 2)
         //rl.GuiSlider({0,90,100,30}, "", "", &rot, 0, 360)
-
-        rl.ClearBackground(rl.WHITE)
+        rl.DrawFPS(5, 5)
         rl.EndDrawing()
     }
 }
