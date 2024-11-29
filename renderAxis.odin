@@ -5,7 +5,7 @@ import "core:math"
 import rl "vendor:raylib"
 
 x_axis_width :: proc "contextless" () -> f32 {
-    return abs(f32(xAxisLine.x1 - xAxisLine.x0))
+    return abs(f32(ctx.xAxisLine.x1 - ctx.xAxisLine.x0))
 }
 
 render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
@@ -15,7 +15,7 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
     segmentsCount += 8 // increasing count so we can try to draw more segments than expected
 
     {// Axis X line
-        using xAxisLine
+        using ctx.xAxisLine
         rl.DrawLine(x0, y, x1, y, GRAPH_COLOR)
     }
 
@@ -26,21 +26,21 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
         i <= segmentsCount * segmentTime + segmentsOffsetInTime;
         i += segmentTime
     {
-        pos := i32(remap(plotOffset, zoomLevel + plotOffset, f32(xAxisLine.x0), f32(xAxisLine.x1), i))
-        if xAxisLine.x0 > pos {
+        pos := i32(remap(plotOffset, zoomLevel + plotOffset, f32(ctx.xAxisLine.x0), f32(ctx.xAxisLine.x1), i))
+        if ctx.xAxisLine.x0 > pos {
             continue
         }
-        if pos > xAxisLine.x1 {
+        if pos > ctx.xAxisLine.x1 {
             break
         }
 
         markLineSize: i32 = 15
-        rl.DrawLine(pos, xAxisLine.y + markLineSize, pos, xAxisLine.y - markLineSize, GRAPH_COLOR)
+        rl.DrawLine(pos, ctx.xAxisLine.y + markLineSize, pos, ctx.xAxisLine.y - markLineSize, GRAPH_COLOR)
 
         subGraph: LineDimensions = {
            x = pos,
-           y0 = xAxisLine.y - markLineSize,
-           y1 = graphMargin
+           y0 = ctx.xAxisLine.y - markLineSize,
+           y1 = ctx.graphMargin
         }
         rl.DrawLine(subGraph.x, subGraph.y0, subGraph.x, subGraph.y1, SUB_GRAPH_COLOR)
 
@@ -51,7 +51,7 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
             case h > 0: graphHintLabel = fmt.ctprintf("%s:%s:%s", time[0:2], time[3:5], time[6:8])
             case:       graphHintLabel = fmt.ctprintf("%s:%s", time[3:5], time[6:8])
         }
-        draw_centered_text(graphHintLabel, pos, xAxisLine.y + markLineSize*2, 0, 16, GRAPH_COLOR)
+        draw_centered_text(graphHintLabel, pos, ctx.xAxisLine.y + markLineSize*2, 0, 16, GRAPH_COLOR)
     }
 }
 

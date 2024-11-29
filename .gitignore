@@ -1,5 +1,10 @@
 .vscode
 
+game_*.dll
+game.dll
+game.exp
+game.lib
+
 *testing.txt
 *.exe
 *.pdb
