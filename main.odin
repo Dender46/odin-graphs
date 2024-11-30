@@ -111,9 +111,10 @@ game_update :: proc() -> bool {
         ctx.offsetX += rl.GetMouseDelta().x
     }
 
-    ctx.offsetX = clamp(ctx.offsetX, -((ctx.pointsCount/ctx.zoomLevel-1)*x_axis_width()), 0)
+    ctx.offsetX = clamp(ctx.offsetX, -((ctx.pointsCount*1000/ctx.zoomLevel-1)*x_axis_width()), 0)
     ctx.plotOffset = remap(0, x_axis_width(), 0, ctx.zoomLevel, ctx.offsetX)
-    ctx.plotOffset = clamp(ctx.plotOffset, -(ctx.pointsCount-ctx.zoomLevel), 0)
+    // Clamp plotOffset just in case. If gives trouble - remove it >:(
+    ctx.plotOffset = clamp(ctx.plotOffset, -(ctx.pointsCount*1000-ctx.zoomLevel), 0)
 
     if wheelMove := rl.GetMouseWheelMoveV().y; wheelMove != 0 {
         zoomExp :: -0.07
@@ -121,7 +122,7 @@ game_update :: proc() -> bool {
         ctx.targetZoomLevel = clamp(ctx.targetZoomLevel, 10, ctx.pointsCount*1000)
     }
 
-    ctx.zoomLevel = exp_decay(ctx.zoomLevel, ctx.targetZoomLevel, 18, rl.GetFrameTime())
+    ctx.zoomLevel = exp_decay(ctx.zoomLevel, ctx.targetZoomLevel, 16, rl.GetFrameTime())
 
     // ====================
     // Raylib begin drawing
