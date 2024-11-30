@@ -20,6 +20,15 @@ clock_from_nanoseconds :: proc "contextless" (nsec: i64) -> (hour, min, sec, ms:
     return
 }
 
+clock_from_nanoseconds_ex :: proc "contextless" (nsec: i64) -> (day, hour, min, sec, ms: int) {
+    hour, min, sec, ms = clock_from_nanoseconds(nsec)
+
+    day = hour / 24
+    hour %= 24
+
+    return
+}
+
 MIN_HMSMS_LEN :: 12
 time_to_string_hmsms :: proc(t: i64, buf: []u8) -> (res: string) #no_bounds_check {
     assert(len(buf) >= MIN_HMSMS_LEN)

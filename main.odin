@@ -9,8 +9,10 @@ import "core:math"
 import "core:math/rand"
 import rl "vendor:raylib"
 
+// Variables that don't change, and that should be updated on hot reloaded
+// Be careful
 initialize_statics :: proc() {
-    ctx.zoomLevel = 60
+    ctx.zoomLevel = 60_000
     ctx.graphMargin = 60
     ctx.xAxisLine = {
         x0 = ctx.graphMargin,
@@ -81,6 +83,9 @@ game_init :: proc() {
 
 @(export)
 game_update :: proc() -> bool {
+    defer {
+        reset_debug_text_state()
+    }
     ctx.window.width = rl.GetScreenWidth()
     ctx.window.height = rl.GetScreenHeight()
 
@@ -90,10 +95,16 @@ game_update :: proc() -> bool {
             margin, f32(ctx.window.height-30),
             f32(ctx.window.width-margin*2), 30
         }
-        h, m, s, _ := clock_from_nanoseconds(i64(ctx.zoomLevel) * 1_000_000_000)
-        leftCaption  := fmt.ctprintf("%f", ctx.zoomLevel)
-        rightCaption := fmt.ctprintf("%02v:%02v:%02v", h, m, s)
-        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.targetZoomLevel, 0, ctx.pointsCount)
+        h, m, s, ms := clock_from_nanoseconds(i64(ctx.zoomLevel) * 1_000_000)
+        leftCaption  := fmt.ctprint(ctx.zoomLevel)
+        rightCaption: cstring
+        switch {
+            case h == 0 && m == 0 && s < 3  : rightCaption = fmt.ctprintf("%02vs.%03vms", s, ms)
+            case h == 0 && m >= 0 && s >= 0 : rightCaption = fmt.ctprintf("%02vm:%02vs", m, s)
+            case h > 0                      : rightCaption = fmt.ctprintf("%02vh:%02vm", h, m)
+        }
+
+        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.targetZoomLevel, 10, ctx.pointsCount*1000) //40 mins
     }
 
     if rl.IsMouseButtonDown(.LEFT) && !guiControlExclusiveMode {
@@ -107,18 +118,21 @@ game_update :: proc() -> bool {
     if wheelMove := rl.GetMouseWheelMoveV().y; wheelMove != 0 {
         zoomExp :: -0.07
         ctx.targetZoomLevel *= math.exp(zoomExp * wheelMove)
-        ctx.targetZoomLevel = clamp(ctx.targetZoomLevel, 1, ctx.pointsCount)
+        ctx.targetZoomLevel = clamp(ctx.targetZoomLevel, 10, ctx.pointsCount*1000)
     }
 
     ctx.zoomLevel = exp_decay(ctx.zoomLevel, ctx.targetZoomLevel, 18, rl.GetFrameTime())
 
+    // ====================
+    // Raylib begin drawing
+    // ====================
     rl.BeginDrawing()
     rl.ClearBackground(rl.WHITE)
 
     render_x_axis(ctx.plotOffset, ctx.offsetX, ctx.zoomLevel)
 
     // Render plot line
-    if true {
+    if false {
         for i in i32(-ctx.plotOffset)..<i32(ctx.zoomLevel-ctx.plotOffset) {
             index := clamp(i, 0, i32(ctx.pointsCount-2))
             posBegin := rl.Vector2{
@@ -139,6 +153,14 @@ game_update :: proc() -> bool {
     //rl.GuiSlider({0,0, 100,30}, "", "", &x, 0, f32(window.width) / 2)
     //rl.GuiSlider({0,60,100,30}, "", "", &y, 0, f32(window.height) / 2)
     //rl.GuiSlider({0,90,100,30}, "", "", &rot, 0, 360)
+    {
+        @(static) hotReloadTimer: f32 = 3
+        if hotReloadTimer >= 0 {
+            draw_centered_text("RELOADED", ctx.window.width/2, ctx.window.height/2, 0, 60, rl.ColorAlpha(rl.RED, hotReloadTimer))
+            hotReloadTimer -= rl.GetFrameTime()
+            hotReloadTimer = clamp(hotReloadTimer, 0, 3)
+        }
+    }
     rl.DrawFPS(5, 5)
     rl.EndDrawing()
 

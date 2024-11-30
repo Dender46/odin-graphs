@@ -1,6 +1,7 @@
 package graphs
 
 import "core:math"
+import "core:fmt"
 import rl "vendor:raylib"
 
 // =============== RAYLIB ===============
@@ -38,6 +39,25 @@ draw_vertical_line :: proc "contextless" (ctx: Context, x: i32, color: rl.Color)
 
 draw_horizontal_line :: proc "contextless" (ctx: Context, y: i32, color: rl.Color) {
     rl.DrawLine(0, y, ctx.window.width, y, color)
+}
+
+debugTextYOffset: i32 = 30
+reset_debug_text_state :: proc() {
+    debugTextYOffset = 30
+}
+
+debug_padding :: proc() {
+    debugTextYOffset += 10
+}
+
+debug_text :: proc(args: ..any) {
+    rl.DrawText(fmt.ctprint(..args), 3, debugTextYOffset, 20, rl.BLACK)
+    debugTextYOffset += 20
+}
+
+debug_textf :: proc(f: string, args: ..any) {
+    rl.DrawText(fmt.ctprintf(f, ..args), 3, debugTextYOffset, 20, rl.BLACK)
+    debugTextYOffset += 20
 }
 
 // Sets guiControlExclusiveMode, guiControlExclusiveRec, so we can tell if element is being manipulated
