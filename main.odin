@@ -35,6 +35,7 @@ game_init :: proc() {
     rl.SetTargetFPS(ctx.window.fps)
 
     if true {
+        // fileName :: "2024_08_22_14_16_Render_CPU_Main_Thread_Frame_Time.bin"
         fileName :: "2024_08_21_12_30_Render_CPU_Main_Thread_Frame_Time.bin"
         fileHandle, ok0 := os.open(fileName)
         if ok0 != os.ERROR_NONE {
@@ -75,10 +76,7 @@ game_init :: proc() {
         }
     }
 
-    reserve(&ctx.pointsData, u32(ctx.pointsCount))
-    for i in 0..<ctx.pointsCount {
-        append(&ctx.pointsData, rand.float32_range(10, 60))
-    }
+    ctx.pointsData = make([dynamic]rl.Vector2, len(ctx.fileElements))
 }
 
 @(export)
@@ -103,7 +101,7 @@ game_update :: proc() -> bool {
             case h == 0 && m >= 0 && s >= 0 : rightCaption = fmt.ctprintf("%02vm:%02vs", m, s)
             case h > 0                      : rightCaption = fmt.ctprintf("%02vh:%02vm", h, m)
         }
-
+        
         GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.targetZoomLevel, 10, ctx.pointsCount*1000) //40 mins
     }
 
@@ -142,9 +140,10 @@ game_update :: proc() -> bool {
     if true {
         plotStart := -ctx.plotOffset
         plotEnd   := ctx.zoomLevel-ctx.plotOffset
+        pointsDataIndex: i32
+
         for i := 0; i < len(ctx.fileElements)-1; i += 1 {
             el := ctx.fileElements[i]
-            nextEl := ctx.fileElements[i+1]
             if f32(el.timestep) < plotStart {
                 continue
             }
@@ -155,25 +154,17 @@ game_update :: proc() -> bool {
             i := i32(i)
             // for testing convert initial values in nanoseconds to milliseconds
             convertedVal := f32(el.value) / 1_000_000
-            convertedValNext := f32(nextEl.value) / 1_000_000
 
-            posBegin := rl.Vector2{
+            ctx.pointsData[pointsDataIndex] = {
                 remap(plotStart, plotEnd, f32(ctx.xAxisLine.x0), f32(ctx.xAxisLine.x1), f32(el.timestep)),
-                f32(math.lerp(f64(ctx.xAxisLine.y), f64(0), f64(convertedVal / 40))) // TODO: use yAxisLine TODO: change lerpT
+                f32(math.lerp(f64(ctx.xAxisLine.y), f64(0), f64(convertedVal / 100))) // TODO: use yAxisLine TODO: change lerpT
             }
-
-            posEnd   := rl.Vector2{
-                remap(plotStart, plotEnd, f32(ctx.xAxisLine.x0), f32(ctx.xAxisLine.x1), f32(nextEl.timestep)),
-                f32(math.lerp(f64(ctx.xAxisLine.y), f64(0), f64(convertedValNext / 40))) // TODO: use yAxisLine TODO: change lerpT
-            }
-
-            rl.DrawLineEx(posBegin, posEnd, 3, rl.BLUE)
+            pointsDataIndex += 1
         }
+
+        rl.DrawSplineLinear(raw_data(ctx.pointsData[:]), pointsDataIndex, 3, rl.BLUE)
     }
 
-    //rl.GuiSlider({0,0, 100,30}, "", "", &x, 0, f32(window.width) / 2)
-    //rl.GuiSlider({0,60,100,30}, "", "", &y, 0, f32(window.height) / 2)
-    //rl.GuiSlider({0,90,100,30}, "", "", &rot, 0, 360)
     {
         @(static) hotReloadTimer: f32 = 3
         if hotReloadTimer >= 0 {
@@ -196,6 +187,7 @@ game_memory :: proc() -> rawptr {
 @(export)
 game_shutdown :: proc() {
     delete(ctx.pointsData)
+    delete(ctx.fileElements)
     free(ctx)
 }
 
@@ -206,3 +198,9 @@ game_hot_reloaded :: proc(memFromOldApi: ^Context) {
     ctx = memFromOldApi
     initialize_statics()
 }
+
+// make game use good GPU on laptops etc
+// @(export)
+// NvOptimusEnablement: u32 = 1
+// @(export)
+// AmdPowerXpressRequestHighPerformance: i32 = 1

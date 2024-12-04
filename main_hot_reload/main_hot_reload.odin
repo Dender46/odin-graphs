@@ -105,3 +105,9 @@ unload_game_api :: proc(gameApi: GameAPI) {
     }
 
 }
+
+// Make game use good GPU on laptops.
+// @(export)
+// NvOptimusEnablement: u32 = 1
+// @(export)
+// AmdPowerXpressRequestHighPerformance: i32 = 1

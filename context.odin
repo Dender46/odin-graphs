@@ -24,14 +24,14 @@ Context :: struct {
 
     xAxisLine       : LineDimensions,
     graphMargin     : i32,
+
     offsetX         : f32, // in pixels
     plotOffset      : f32, // in milliseconds
-
     zoomLevel       : f32, // **USE THIS**: actual zoom
     targetZoomLevel : f32, // **DO NOT USE THIS**: only used to calc smoothness
 
     pointsCount     : f32,
-    pointsData      : [dynamic]f32,
+    pointsData      : [dynamic]rl.Vector2,
     fileElements    : [dynamic]FileElement,
 }
 
