@@ -94,11 +94,11 @@ exp_decay :: proc "contextless" (a, b, decay, dt: f32) -> f32 {
     return b+(a-b)*math.exp(-decay*dt)
 }
 
-inv_lerp :: proc "contextless" (a, b, val: f32) -> f32 {
+inv_lerp :: proc "contextless" (a, b, val: $T) -> T {
     return (val - a) / (b - a)
 }
 
-remap :: proc "contextless" (iMin, iMax, oMin, oMax, val: f32) -> f32 {
+remap :: proc "contextless" (iMin, iMax, oMin, oMax, val: $T) -> T {
     t := inv_lerp(iMin, iMax, val)
     return math.lerp(oMin, oMax, t)
 }

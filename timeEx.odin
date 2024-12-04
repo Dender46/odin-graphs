@@ -2,6 +2,11 @@ package graphs
 
 import "core:time"
 
+FORMAT_H_M_S_MS :: "%02vh:%02vm:%02vs.%03vms"
+FORMAT_H_M      :: "%02vh:%02vm"
+FORMAT_M_S      :: "%02vm:%02vs"
+FORMAT_S_MS     :: "%02vs.%03vms"
+
 _time_abs :: proc "contextless" (t: time.Time) -> u64 {
     return u64(t._nsec/1e9 + time.UNIX_TO_ABSOLUTE)
 }

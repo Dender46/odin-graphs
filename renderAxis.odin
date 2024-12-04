@@ -49,9 +49,9 @@ render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
         h, m, s, ms := clock_from_nanoseconds(i64(i) * 1_000_000)
         graphHintLabel: cstring
         switch {
-            case h == 0 && m == 0 && s <=5  : graphHintLabel = fmt.ctprintf("%02v.%03v", s, ms)
-            case h == 0 && m >= 0 && s >= 0 : graphHintLabel = fmt.ctprintf("%02v:%02v", m, s)
-            case h > 0                      : graphHintLabel = fmt.ctprintf("%02v:%02v", h, m)
+            case h == 0 && m == 0 && s <=5  : graphHintLabel = fmt.ctprintf(FORMAT_S_MS, s, ms)
+            case h == 0 && m >= 0 && s >= 0 : graphHintLabel = fmt.ctprintf(FORMAT_M_S, m, s)
+            case h > 0                      : graphHintLabel = fmt.ctprintf(FORMAT_H_M, h, m)
         }
 
         draw_centered_text(graphHintLabel, pos, ctx.xAxisLine.y + markLineSize*2, 0, 20, GRAPH_COLOR)
@@ -67,9 +67,9 @@ findAppropriateInterval :: proc (zoomLvl, intervalCount: f32) -> (intervalInMS: 
 
         h, m, s, ms := clock_from_nanoseconds(i64(intervalInMS) * 1_000_000)
         switch {
-            case h == 0 && m == 0 && s <=5  : debug_textf("%02vs.%03vms", s, ms)
-            case h == 0 && m >= 0 && s >= 0 : debug_textf("%02vm:%02vs", m, s)
-            case h > 0                      : debug_textf("%02vh:%02vm", h, m)
+            case h == 0 && m == 0 && s <=5  : debug_textf(FORMAT_S_MS, s, ms)
+            case h == 0 && m >= 0 && s >= 0 : debug_textf(FORMAT_M_S, m, s)
+            case h > 0                      : debug_textf(FORMAT_H_M, h, m)
         }
         debug_padding()
         debug_textf("intervalInMS: %f", intervalInMS)

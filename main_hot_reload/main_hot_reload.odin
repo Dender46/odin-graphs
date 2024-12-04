@@ -27,8 +27,6 @@ GameAPI :: struct {
 }
 
 main :: proc() {
-    context.user_index = 123456
-    fmt.println("main context.user_index: ", context.user_index)
     gameApiVersion := 0
     gameApi, gameApi_Ok := load_game_api(gameApiVersion)
     if !gameApi_Ok {

@@ -34,39 +34,39 @@ game_init :: proc() {
     rl.InitWindow(ctx.window.width, ctx.window.height, ctx.window.name)
     rl.SetTargetFPS(ctx.window.fps)
 
-    if false {
-        fileHandle, err := os.open("2024_10_14_14_33_Battery_Level.bin")
-        defer os.close(fileHandle)
-        if err != os.ERROR_NONE {
+    if true {
+        fileName :: "2024_08_21_12_30_Render_CPU_Main_Thread_Frame_Time.bin"
+        fileHandle, ok0 := os.open(fileName)
+        if ok0 != os.ERROR_NONE {
             fmt.println("Couldn't open a file")
             return
         }
-    
-        fmt.println("main context.user_index: ", context.user_index)
-        fileBytes, succ := os.read_entire_file_from_filename("2024_10_14_14_33_Battery_Level.bin")
-        fileSize, _ := os.file_size(fileHandle)
-    
-        FileElement :: struct {
-            timestep: i64,
-            value: i64,
+        defer os.close(fileHandle)
+
+        fileBytes, ok1 := os.read_entire_file_from_filename(fileName)
+        if !ok1 {
+            fmt.println("Couldn't read file ")
+            return
         }
-        elements: [dynamic]FileElement
-        defer delete(elements)
-        reserve(&elements, fileSize / 16)
-    
-        if succ && len(fileBytes) == int(fileSize) {
+        defer delete(fileBytes)
+
+        fileSize, _ := os.file_size(fileHandle)
+        reserve(&ctx.fileElements, fileSize / 16)
+
+        if ok1 && len(fileBytes) == int(fileSize) {
             firstTimestep := bytes_to_int64(fileBytes[:8])
-    
+
             for i := 0; i < len(fileBytes); i += 16 {
                 timestep := bytes_to_int64(fileBytes[i:i+8])
-    
-                nanoseconds := i64(timestep - firstTimestep) * 100
-                // buf : [MIN_HMSMS_LEN]u8
-                // fmt.println(time_to_string_hmsms(nanoseconds, buf[:]))
-    
+
+                // Mul by 100 to convert from .NET ticks to nanoseconds
+                nanoseconds := (timestep - firstTimestep) * 100
+                // but for now lets keep it to milliseconds range
+                ms := nanoseconds / 1_000_000
+
                 val := bytes_to_int64(fileBytes[i+8:i+16])
-                append(&elements, FileElement{
-                    timestep=timestep,
+                append(&ctx.fileElements, FileElement{
+                    timestep=ms,
                     value=val
                 })
             }
@@ -112,7 +112,7 @@ game_update :: proc() -> bool {
     }
 
     ctx.offsetX = clamp(ctx.offsetX, -((ctx.pointsCount*1000/ctx.zoomLevel-1)*x_axis_width()), 0)
-    ctx.plotOffset = remap(0, x_axis_width(), 0, ctx.zoomLevel, ctx.offsetX)
+    ctx.plotOffset = remap(f32(0), x_axis_width(), f32(0), ctx.zoomLevel, ctx.offsetX)
     // Clamp plotOffset just in case. If gives trouble - remove it >:(
     ctx.plotOffset = clamp(ctx.plotOffset, -(ctx.pointsCount*1000-ctx.zoomLevel), 0)
 
@@ -132,21 +132,41 @@ game_update :: proc() -> bool {
 
     render_x_axis(ctx.plotOffset, ctx.offsetX, ctx.zoomLevel)
 
+    h, m, s, ms := clock_from_nanoseconds(i64(abs(ctx.plotOffset)) * 1_000_000)
+    debug_text("plotOffset:")
+    debug_text(ctx.plotOffset)
+    debug_textf(FORMAT_H_M_S_MS, h, m, s, ms)
+    debug_padding()
+
     // Render plot line
-    if false {
-        for i in i32(-ctx.plotOffset)..<i32(ctx.zoomLevel-ctx.plotOffset) {
-            index := clamp(i, 0, i32(ctx.pointsCount-2))
+    if true {
+        plotStart := -ctx.plotOffset
+        plotEnd   := ctx.zoomLevel-ctx.plotOffset
+        for i := 0; i < len(ctx.fileElements)-1; i += 1 {
+            el := ctx.fileElements[i]
+            nextEl := ctx.fileElements[i+1]
+            if f32(el.timestep) < plotStart {
+                continue
+            }
+            if f32(el.timestep) > plotEnd {
+                debug_text(i)
+                break
+            }
+            i := i32(i)
+            // for testing convert initial values in nanoseconds to milliseconds
+            convertedVal := f32(el.value) / 1_000_000
+            convertedValNext := f32(nextEl.value) / 1_000_000
+
             posBegin := rl.Vector2{
-                math.lerp(f32(ctx.xAxisLine.x0), f32(ctx.xAxisLine.x1), f32(index)/ctx.zoomLevel),
-                math.lerp(f32(0), f32(ctx.xAxisLine.y), ctx.pointsData[index]/60) // TODO: use yAxisLine TODO: change lerpT
+                remap(plotStart, plotEnd, f32(ctx.xAxisLine.x0), f32(ctx.xAxisLine.x1), f32(el.timestep)),
+                f32(math.lerp(f64(ctx.xAxisLine.y), f64(0), f64(convertedVal / 40))) // TODO: use yAxisLine TODO: change lerpT
             }
 
             posEnd   := rl.Vector2{
-                math.lerp(f32(ctx.xAxisLine.x0), f32(ctx.xAxisLine.x1), f32(index+1)/ctx.zoomLevel),
-                math.lerp(f32(0), f32(ctx.xAxisLine.y), ctx.pointsData[index+1]/60) // TODO: use yAxisLine TODO: change lerpT
+                remap(plotStart, plotEnd, f32(ctx.xAxisLine.x0), f32(ctx.xAxisLine.x1), f32(nextEl.timestep)),
+                f32(math.lerp(f64(ctx.xAxisLine.y), f64(0), f64(convertedValNext / 40))) // TODO: use yAxisLine TODO: change lerpT
             }
-            posBegin.x += ctx.offsetX
-            posEnd.x   += ctx.offsetX
+
             rl.DrawLineEx(posBegin, posEnd, 3, rl.BLUE)
         }
     }
