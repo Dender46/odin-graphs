@@ -104,33 +104,34 @@ game_update :: proc() -> bool {
             case h > 0                      : rightCaption = fmt.ctprintf(FORMAT_H_M, h, m)
         }
         
-        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.targetZoomLevel, 10, ctx.pointsCount*3000) //40 mins
+        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.targetZoomLevel, 10, ctx.pointsCount*1000) //40 mins
     }
 
-    if rl.IsMouseButtonDown(.LEFT) && !guiControlExclusiveMode {
-        ctx.offsetX += rl.GetMouseDelta().x
-    }
-
-    ctx.offsetX = clamp(ctx.offsetX, -((ctx.pointsCount*1000/ctx.zoomLevel-1)*x_axis_width()), 0)
-    ctx.plotOffset = remap(f32(0), x_axis_width(), f32(0), ctx.zoomLevel, ctx.offsetX)
-    // Clamp plotOffset just in case. If gives trouble - remove it >:(
-    ctx.plotOffset = clamp(ctx.plotOffset, -(ctx.pointsCount*1000-ctx.zoomLevel), 0)
-
+    // ========================================
+    // Zoom handling
+    // ========================================
     if wheelMove := rl.GetMouseWheelMoveV().y; wheelMove != 0 {
         zoomExp :: -0.07
         ctx.targetZoomLevel *= math.exp(zoomExp * wheelMove)
-        ctx.targetZoomLevel = clamp(ctx.targetZoomLevel, 10, ctx.pointsCount*3000)
+        ctx.targetZoomLevel = clamp(ctx.targetZoomLevel, 10, ctx.pointsCount*1000)
     }
-
     ctx.zoomLevel = exp_decay(ctx.zoomLevel, ctx.targetZoomLevel, 16, rl.GetFrameTime())
 
-    // ====================
+    // ========================================
+    // Moving
+    // ========================================
+    if rl.IsMouseButtonDown(.LEFT) && !guiControlExclusiveMode {
+        ctx.plotOffset -= remap(f32(0), x_axis_width(), f32(0), ctx.zoomLevel, rl.GetMouseDelta().x)
+    }
+    ctx.plotOffset = clamp(ctx.plotOffset, 0, ctx.pointsCount*1000-ctx.zoomLevel)
+
+    // ========================================
     // Raylib begin drawing
-    // ====================
+    // ========================================
     rl.BeginDrawing()
     rl.ClearBackground(rl.WHITE)
 
-    render_x_axis(ctx.plotOffset, ctx.offsetX, ctx.zoomLevel)
+    render_x_axis(ctx.plotOffset, ctx.zoomLevel)
 
     // h, m, s, ms := clock_from_nanoseconds(i64(abs(ctx.plotOffset)) * 1_000_000)
     //debug_text("plotOffset:")
@@ -138,12 +139,10 @@ game_update :: proc() -> bool {
     //debug_textf(FORMAT_H_M_S_MS, h, m, s, ms)
     //debug_padding()
 
+    // ========================================
     // Render plot line
+    // ========================================
     if true {
-        plotStart := -ctx.plotOffset
-        plotEnd   := ctx.zoomLevel-ctx.plotOffset
-        pointsDataIndex: i32
-
         {
             pointsPerBucket_f := f32(ctx.pointsPerBucket)
             GuiSlider_Custom({100, 0, 600, 28}, "", "", &pointsPerBucket_f, 1, 100)
@@ -153,27 +152,48 @@ game_update :: proc() -> bool {
         debug_text("pointsPerBucket: ", ctx.pointsPerBucket)
         debug_text("bucketsCount: ", bucketsCount)
 
-        get_point_on_plot :: proc(ctx: ^Context, plotStart, plotEnd: f32, el: FileElement) -> rl.Vector2 {
+        get_point_on_plot :: proc(ctx: ^Context, el: FileElement) -> rl.Vector2 {
             // for testing convert initial values in nanoseconds to milliseconds
             convertedVal := f64(el.value) / 1_000_000
+            plotStart := ctx.plotOffset
+            plotEnd := ctx.zoomLevel+ctx.plotOffset
             return {
                 remap(plotStart, plotEnd, f32(ctx.xAxisLine.x0), f32(ctx.xAxisLine.x1), f32(el.timestep)),
                 f32(math.lerp(f64(ctx.xAxisLine.y), f64(0), f64(convertedVal / 150))) // TODO: use yAxisLine TODO: change lerpT
             }
         }
 
+        loopStart := 0
+        loopEnd := len(ctx.fileElements)-1
+        for i in 0..<loopEnd {
+            if f32(ctx.fileElements[i].timestep) >= ctx.plotOffset {
+                loopStart = i
+                break
+            }
+        }
+        for i in loopStart..<loopEnd {
+            if f32(ctx.fileElements[i].timestep) >= ctx.zoomLevel+ctx.plotOffset {
+                loopEnd = i
+                break
+            }
+        }
+        debug_padding()
+        debug_text("loopStart: ", loopStart)
+        debug_text("loopEnd: ", loopEnd)
+
         if ctx.pointsPerBucket == 1 {
-            for i := 0; i < len(ctx.fileElements)-1; i += 1 {
+            pointsDataIndex: i32
+            for i in loopStart..<loopEnd {
                 el := ctx.fileElements[i]
-                if f32(el.timestep) < plotStart {
+                if f32(el.timestep) < ctx.plotOffset {
                     continue
                 }
-                if f32(el.timestep) > plotEnd {
+                if f32(el.timestep) > ctx.zoomLevel+ctx.plotOffset {
                     debug_text(i)
                     break
                 }
 
-                ctx.pointsData[pointsDataIndex] = get_point_on_plot(ctx, plotStart, plotEnd, el)
+                ctx.pointsData[pointsDataIndex] = get_point_on_plot(ctx, el)
                 pointsDataIndex += 1
             }
 
@@ -183,8 +203,8 @@ game_update :: proc() -> bool {
             {
                 firstEl := ctx.fileElements[0]
                 lastEl  := ctx.fileElements[len(ctx.fileElements)-1]
-                ctx.pointsData[0] = get_point_on_plot(ctx, plotStart, plotEnd, firstEl)
-                ctx.pointsData[bucketsCount-1] = get_point_on_plot(ctx, plotStart, plotEnd, lastEl)
+                ctx.pointsData[0] = get_point_on_plot(ctx, firstEl)
+                ctx.pointsData[bucketsCount-1] = get_point_on_plot(ctx, lastEl)
             }
 
             // Skip ranking first and last bucket
@@ -197,7 +217,7 @@ game_update :: proc() -> bool {
                     nextBucketBegin := (i+1)*ctx.pointsPerBucket
                     nextBucketEnd   := (i+2)*ctx.pointsPerBucket
                     for j in nextBucketBegin..<nextBucketEnd {
-                        p := get_point_on_plot(ctx, plotStart, plotEnd, ctx.fileElements[j])
+                        p := get_point_on_plot(ctx, ctx.fileElements[j])
                         timestepAvg += p.x
                         valueAvg    += p.y
                     }
@@ -208,9 +228,9 @@ game_update :: proc() -> bool {
                 currBucketBegin := i * ctx.pointsPerBucket
                 currBucketEnd   := (i+1) * ctx.pointsPerBucket
                 bestRank: f32
-                bestRankedPoint := get_point_on_plot(ctx, plotStart, plotEnd, ctx.fileElements[currBucketBegin])
+                bestRankedPoint := get_point_on_plot(ctx, ctx.fileElements[currBucketBegin])
                 for j in currBucketBegin..<currBucketEnd {
-                    pC := get_point_on_plot(ctx, plotStart, plotEnd, ctx.fileElements[j]) // pointCurrent
+                    pC := get_point_on_plot(ctx, ctx.fileElements[j]) // pointCurrent
                     pB := ctx.pointsData[i-1]
                     pN := nextBucketPoint
                     area := abs((pN.x * pC.y - pC.x * pN.y) + (pB.x * pN.y - pN.x * pB.y) + (pC.x * pB.y - pB.x * pC.y)) * 0.5

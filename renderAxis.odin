@@ -8,8 +8,7 @@ x_axis_width :: proc "contextless" () -> f32 {
     return abs(f32(ctx.xAxisLine.x1 - ctx.xAxisLine.x0))
 }
 
-render_x_axis :: proc(plotOffset, offsetX, zoomLevel: f32) {
-    plotOffset := -plotOffset
+render_x_axis :: proc(plotOffset, zoomLevel: f32) {
     segmentsCount: f32 = 10
     segmentTime := findAppropriateInterval(zoomLevel, segmentsCount)
     segmentsCount += 8 // increasing count so we can try to draw more segments than expected
