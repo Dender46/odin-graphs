@@ -84,6 +84,8 @@ game_update :: proc() -> bool {
     defer {
         reset_debug_text_state()
     }
+    update_statics()
+    // update window size values outside of update_statics() to avoid issues
     ctx.window.width = rl.GetScreenWidth()
     ctx.window.height = rl.GetScreenHeight()
 
@@ -97,9 +99,9 @@ game_update :: proc() -> bool {
         leftCaption  := fmt.ctprint(ctx.zoomLevel)
         rightCaption: cstring
         switch {
-            case h == 0 && m == 0 && s < 3  : rightCaption = fmt.ctprintf("%02vs.%03vms", s, ms)
-            case h == 0 && m >= 0 && s >= 0 : rightCaption = fmt.ctprintf("%02vm:%02vs", m, s)
-            case h > 0                      : rightCaption = fmt.ctprintf("%02vh:%02vm", h, m)
+            case h == 0 && m == 0 && s < 3  : rightCaption = fmt.ctprintf(FORMAT_S_MS, s, ms)
+            case h == 0 && m >= 0 && s >= 0 : rightCaption = fmt.ctprintf(FORMAT_M_S, m, s)
+            case h > 0                      : rightCaption = fmt.ctprintf(FORMAT_H_M, h, m)
         }
         
         GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.targetZoomLevel, 10, ctx.pointsCount*3000) //40 mins
