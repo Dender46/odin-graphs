@@ -33,6 +33,7 @@ Context :: struct {
     pointsCount     : f32,
     pointsData      : [dynamic]rl.Vector2,
     fileElements    : [dynamic]FileElement,
+    pointsPerBucket : int,
 }
 
 ctx: ^Context
