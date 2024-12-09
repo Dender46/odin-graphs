@@ -144,13 +144,10 @@ game_update :: proc() -> bool {
     // ========================================
     if true {
         {
-            pointsPerBucket_f := f32(ctx.pointsPerBucket)
-            GuiSlider_Custom({100, 0, 600, 28}, "", "", &pointsPerBucket_f, 1, 100)
-            ctx.pointsPerBucket = int(pointsPerBucket_f)
+            // pointsPerBucket_f := f32(ctx.pointsPerBucket)
+            // GuiSlider_Custom({100, 0, 600, 28}, "", "", &pointsPerBucket_f, 1, 100)
+            // ctx.pointsPerBucket = int(pointsPerBucket_f)
         }
-        bucketsCount := len(ctx.fileElements) / ctx.pointsPerBucket
-        debug_text("pointsPerBucket: ", ctx.pointsPerBucket)
-        debug_text("bucketsCount: ", bucketsCount)
 
         get_point_on_plot :: proc(ctx: ^Context, el: FileElement) -> rl.Vector2 {
             // for testing convert initial values in nanoseconds to milliseconds
@@ -163,6 +160,7 @@ game_update :: proc() -> bool {
             }
         }
 
+        // Indices to points
         loopStart := 0
         loopEnd := len(ctx.fileElements)-1
         for i in 0..<loopEnd {
@@ -177,45 +175,56 @@ game_update :: proc() -> bool {
                 break
             }
         }
+        // (╯°□°）╯︵ ┻━┻
+        // stupid naive padding of some elements, so that when zoom is really close - render few first and last elements
+        // but the trade off, is that lines are drawn outside of its boundry when zoom is too low
+        // TODO: to fix this - maybe draw background colored rectangles on the sides?
+        loopStart = max(0, loopStart-2)
+        loopEnd   = min(len(ctx.fileElements)-1, loopEnd+2)
+
+        maxPointsOnPlot :: 15_000
+        ctx.pointsPerBucket = max((loopEnd-loopStart) / maxPointsOnPlot, 1,)
+
         debug_padding()
         debug_text("loopStart: ", loopStart)
         debug_text("loopEnd: ", loopEnd)
+        debug_text("pointsPerBucket: ", ctx.pointsPerBucket)
 
         if ctx.pointsPerBucket == 1 {
-            pointsDataIndex: i32
             for i in loopStart..<loopEnd {
-                el := ctx.fileElements[i]
-                if f32(el.timestep) < ctx.plotOffset {
-                    continue
-                }
-                if f32(el.timestep) > ctx.zoomLevel+ctx.plotOffset {
-                    debug_text(i)
-                    break
-                }
-
-                ctx.pointsData[pointsDataIndex] = get_point_on_plot(ctx, el)
-                pointsDataIndex += 1
+                ctx.pointsData[i-loopStart] = get_point_on_plot(ctx, ctx.fileElements[i])
             }
 
-            rl.DrawSplineLinear(raw_data(ctx.pointsData[:]), pointsDataIndex, 3, rl.BLUE)
+            debug_text("drawn points: ", loopEnd-loopStart)
+            rl.DrawSplineLinear(raw_data(ctx.pointsData[:]), i32(loopEnd-loopStart), 3, rl.BLUE)
         }
         else {
+            firstBucketIndex := loopStart / ctx.pointsPerBucket
+            lastBucketIndex  := loopEnd   / ctx.pointsPerBucket - 1
+            bucketsCount := lastBucketIndex - firstBucketIndex + 1
+
+            debug_padding()
+            debug_text("firstBucketIndex: ", firstBucketIndex)
+            debug_text("lastBucketIndex: ", lastBucketIndex)
+            debug_text("bucketsCount: ", bucketsCount)
+
             {
-                firstEl := ctx.fileElements[0]
-                lastEl  := ctx.fileElements[len(ctx.fileElements)-1]
+                firstEl := ctx.fileElements[loopStart]
+                lastEl  := ctx.fileElements[loopEnd]
                 ctx.pointsData[0] = get_point_on_plot(ctx, firstEl)
                 ctx.pointsData[bucketsCount-1] = get_point_on_plot(ctx, lastEl)
             }
 
             // Skip ranking first and last bucket
-            for i in 1..<bucketsCount-1 {
+            pointsDataIndex := 1
+            for i in firstBucketIndex..<lastBucketIndex {
                 nextBucketPoint: rl.Vector2
-                if i == bucketsCount-2 { // instead of ranking last bucket - use last value
+                if i == lastBucketIndex-2 { // instead of ranking last bucket - use last value
                     nextBucketPoint = ctx.pointsData[bucketsCount-1]
                 } else {
                     timestepAvg, valueAvg: f32
                     nextBucketBegin := (i+1)*ctx.pointsPerBucket
-                    nextBucketEnd   := (i+2)*ctx.pointsPerBucket
+                    nextBucketEnd   := (i+2)*ctx.pointsPerBucket-1
                     for j in nextBucketBegin..<nextBucketEnd {
                         p := get_point_on_plot(ctx, ctx.fileElements[j])
                         timestepAvg += p.x
@@ -231,7 +240,7 @@ game_update :: proc() -> bool {
                 bestRankedPoint := get_point_on_plot(ctx, ctx.fileElements[currBucketBegin])
                 for j in currBucketBegin..<currBucketEnd {
                     pC := get_point_on_plot(ctx, ctx.fileElements[j]) // pointCurrent
-                    pB := ctx.pointsData[i-1]
+                    pB := ctx.pointsData[pointsDataIndex-1]
                     pN := nextBucketPoint
                     area := abs((pN.x * pC.y - pC.x * pN.y) + (pB.x * pN.y - pN.x * pB.y) + (pC.x * pB.y - pB.x * pC.y)) * 0.5
                     if area > bestRank {
@@ -239,10 +248,12 @@ game_update :: proc() -> bool {
                         bestRankedPoint = pC
                     }
                 }
-                ctx.pointsData[i] = bestRankedPoint
+                ctx.pointsData[pointsDataIndex] = bestRankedPoint
+                pointsDataIndex += 1
             }
-    
-            rl.DrawSplineLinear(raw_data(ctx.pointsData[:]), i32(bucketsCount), 3, rl.BLUE)
+
+            debug_text("drawn points: ", pointsDataIndex)
+            rl.DrawSplineLinear(raw_data(ctx.pointsData[:]), i32(pointsDataIndex), 3, rl.BLUE)
         }
     }
 
