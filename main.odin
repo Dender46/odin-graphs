@@ -257,6 +257,8 @@ game_update :: proc() -> bool {
     rl.DrawFPS(5, 5)
     rl.EndDrawing()
 
+    free_all(context.temp_allocator)
+
     return !rl.WindowShouldClose()
 }
 

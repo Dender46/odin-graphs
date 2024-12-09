@@ -3,6 +3,7 @@ package graphs_hot_reload
 import "core:os"
 import "core:dynlib"
 import "core:fmt"
+import "core:mem"
 import "core:c/libc"
 
 when ODIN_OS == .Windows {
@@ -27,6 +28,24 @@ GameAPI :: struct {
 }
 
 main :: proc() {
+    defaultAllocator := context.allocator
+    trackingAllocator: mem.Tracking_Allocator
+    mem.tracking_allocator_init(&trackingAllocator, defaultAllocator)
+    context.allocator = mem.tracking_allocator(&trackingAllocator)
+
+    reset_tracking_allocator :: proc(a: ^mem.Tracking_Allocator) -> (err: bool) {
+        totalLeakedBytes: int
+        for _, value in a.allocation_map {
+            fmt.printf("%v: Leaked %v bytes\n", value.location, value.size)
+            totalLeakedBytes += value.size
+            err = true
+        }
+        if err {
+            fmt.printf("Total leaked bytes: %v", totalLeakedBytes)
+        }
+        return
+    }
+
     gameApiVersion := 0
     gameApi, gameApi_Ok := load_game_api(gameApiVersion)
     if !gameApi_Ok {
@@ -66,6 +85,7 @@ main :: proc() {
     }
 
     gameApi.shutdown()
+    reset_tracking_allocator(&trackingAllocator)
     unload_game_api(gameApi)
 
     return
