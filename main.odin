@@ -6,6 +6,7 @@ import "core:fmt"
 import "core:strings"
 import "core:time"
 import "core:math"
+import "core:slice"
 import "core:math/rand"
 import rl "vendor:raylib"
 
@@ -28,7 +29,7 @@ game_init :: proc() {
     update_statics()
     ctx.zoomLevel = 60_000
     ctx.targetZoomLevel = ctx.zoomLevel
-    ctx.pointsCount = 2400
+    ctx.pointsCount = 2400*1000*10
 
     rl.SetConfigFlags(ctx.window.configFlags)
     rl.InitWindow(ctx.window.width, ctx.window.height, ctx.window.name)
@@ -52,24 +53,28 @@ game_init :: proc() {
         defer delete(fileBytes)
 
         fileSize, _ := os.file_size(fileHandle)
-        reserve(&ctx.fileElements, fileSize / 16)
+        reserve(&ctx.fileElements, fileSize / 16 * 3)
 
         if ok1 && len(fileBytes) == int(fileSize) {
-            firstTimestep := bytes_to_int64(fileBytes[:8])
-
-            for i := 0; i < len(fileBytes); i += 16 {
-                timestep := bytes_to_int64(fileBytes[i:i+8])
-
-                // Mul by 100 to convert from .NET ticks to nanoseconds
-                nanoseconds := (timestep - firstTimestep) * 100
-                // but for now lets keep it to milliseconds range
-                ms := nanoseconds / 1_000_000
-
-                val := bytes_to_int64(fileBytes[i+8:i+16])
-                append(&ctx.fileElements, FileElement{
-                    timestep=ms,
-                    value=val
-                })
+            lastts: i64 = 0
+            for i in 0..<3 {
+                firstTimestep := bytes_to_int64(fileBytes[:8])
+    
+                for i := 0; i < len(fileBytes); i += 16 {
+                    timestep := bytes_to_int64(fileBytes[i:i+8])
+    
+                    // Mul by 100 to convert from .NET ticks to nanoseconds
+                    nanoseconds := (timestep - firstTimestep) * 100
+                    // but for now lets keep it to milliseconds range
+                    ms := nanoseconds / 1_000_000
+    
+                    val := bytes_to_int64(fileBytes[i+8:i+16])
+                    append(&ctx.fileElements, FileElement{
+                        timestep=ms + lastts,
+                        value=val
+                    })
+                }
+                lastts = ctx.fileElements[len(ctx.fileElements)-1].timestep
             }
         } else {
             fmt.println("something is wrong")
@@ -104,7 +109,7 @@ game_update :: proc() -> bool {
             case h > 0                      : rightCaption = fmt.ctprintf(FORMAT_H_M, h, m)
         }
         
-        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.targetZoomLevel, 10, ctx.pointsCount*1000) //40 mins
+        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.targetZoomLevel, 10, ctx.pointsCount) //40 mins
     }
 
     // ========================================
@@ -113,7 +118,7 @@ game_update :: proc() -> bool {
     if wheelMove := rl.GetMouseWheelMoveV().y; wheelMove != 0 {
         zoomExp :: -0.07
         ctx.targetZoomLevel *= math.exp(zoomExp * wheelMove)
-        ctx.targetZoomLevel = clamp(ctx.targetZoomLevel, 10, ctx.pointsCount*1000)
+        ctx.targetZoomLevel = clamp(ctx.targetZoomLevel, 10, ctx.pointsCount)
     }
     ctx.zoomLevel = exp_decay(ctx.zoomLevel, ctx.targetZoomLevel, 16, rl.GetFrameTime())
 
@@ -123,7 +128,7 @@ game_update :: proc() -> bool {
     if rl.IsMouseButtonDown(.LEFT) && !guiControlExclusiveMode {
         ctx.plotOffset -= remap(f32(0), x_axis_width(), f32(0), ctx.zoomLevel, rl.GetMouseDelta().x)
     }
-    ctx.plotOffset = clamp(ctx.plotOffset, 0, ctx.pointsCount*1000-ctx.zoomLevel)
+    ctx.plotOffset = clamp(ctx.plotOffset, 0, ctx.pointsCount-ctx.zoomLevel)
 
     // ========================================
     // Raylib begin drawing
@@ -143,12 +148,6 @@ game_update :: proc() -> bool {
     // Render plot line
     // ========================================
     if true {
-        {
-            // pointsPerBucket_f := f32(ctx.pointsPerBucket)
-            // GuiSlider_Custom({100, 0, 600, 28}, "", "", &pointsPerBucket_f, 1, 100)
-            // ctx.pointsPerBucket = int(pointsPerBucket_f)
-        }
-
         get_point_on_plot :: proc(ctx: ^Context, el: FileElement) -> rl.Vector2 {
             // for testing convert initial values in nanoseconds to milliseconds
             convertedVal := f64(el.value) / 1_000_000
@@ -182,8 +181,18 @@ game_update :: proc() -> bool {
         loopStart = max(0, loopStart-2)
         loopEnd   = min(len(ctx.fileElements)-1, loopEnd+2)
 
-        maxPointsOnPlot :: 15_000
-        ctx.pointsPerBucket = max((loopEnd-loopStart) / maxPointsOnPlot, 1,)
+        maxPointsOnPlot :: 5_000
+        ctx.pointsPerBucket = max((loopEnd-loopStart) / maxPointsOnPlot, 1)
+        if ctx.pointsPerBucket == 1 {
+            // +2 for min and max points
+            ctx.pointsPerBucket += 2
+        }
+
+        {
+            pointsPerBucket_f := f32(ctx.pointsPerBucket)
+            // GuiSlider_Custom({100, 0, 600, 28}, "", "", &pointsPerBucket_f, 5, 100)
+            ctx.pointsPerBucket = int(pointsPerBucket_f)
+        }
 
         debug_padding()
         debug_text("loopStart: ", loopStart)
@@ -217,14 +226,14 @@ game_update :: proc() -> bool {
 
             // Skip ranking first and last bucket
             pointsDataIndex := 1
-            for i in firstBucketIndex..<lastBucketIndex {
+            for i in (firstBucketIndex+1)..<lastBucketIndex {
                 nextBucketPoint: rl.Vector2
                 if i == lastBucketIndex-2 { // instead of ranking last bucket - use last value
                     nextBucketPoint = ctx.pointsData[bucketsCount-1]
                 } else {
                     timestepAvg, valueAvg: f32
                     nextBucketBegin := (i+1)*ctx.pointsPerBucket
-                    nextBucketEnd   := (i+2)*ctx.pointsPerBucket-1
+                    nextBucketEnd   := (i+2)*ctx.pointsPerBucket
                     for j in nextBucketBegin..<nextBucketEnd {
                         p := get_point_on_plot(ctx, ctx.fileElements[j])
                         timestepAvg += p.x
@@ -236,20 +245,38 @@ game_update :: proc() -> bool {
 
                 currBucketBegin := i * ctx.pointsPerBucket
                 currBucketEnd   := (i+1) * ctx.pointsPerBucket
-                bestRank: f32
-                bestRankedPoint := get_point_on_plot(ctx, ctx.fileElements[currBucketBegin])
+                bestRank: f64 = -1
+                temp := get_point_on_plot(ctx, ctx.fileElements[currBucketBegin])
+
+                Point :: struct {
+                    point: rl.Vector2,
+                    index: int
+                }
+                currBucket: [3]Point
+                currBucket[0].point = temp // bestRanked
+                currBucket[1].point = temp // min
+                currBucket[2].point = temp // max
+
                 for j in currBucketBegin..<currBucketEnd {
                     pC := get_point_on_plot(ctx, ctx.fileElements[j]) // pointCurrent
                     pB := ctx.pointsData[pointsDataIndex-1]
                     pN := nextBucketPoint
-                    area := abs((pN.x * pC.y - pC.x * pN.y) + (pB.x * pN.y - pN.x * pB.y) + (pC.x * pB.y - pB.x * pC.y)) * 0.5
+                    area := f64(abs(f64(pN.x * pC.y - pC.x * pN.y) + f64(pB.x * pN.y - pN.x * pB.y) + f64(pC.x * pB.y - pB.x * pC.y)) * 0.5)
                     if area > bestRank {
                         bestRank = area
-                        bestRankedPoint = pC
+                        currBucket[0].point = pC
+                        currBucket[0].index = j
                     }
+                    if pC.y < currBucket[1].point.y { currBucket[1].point = pC; currBucket[1].index = j }
+                    if pC.y > currBucket[2].point.y { currBucket[2].point = pC; currBucket[2].index = j }
                 }
-                ctx.pointsData[pointsDataIndex] = bestRankedPoint
-                pointsDataIndex += 1
+                slice.sort_by(currBucket[:], proc(i, j: Point) -> bool {
+                    return i.index < j.index 
+                })
+                ctx.pointsData[pointsDataIndex] = currBucket[0].point
+                ctx.pointsData[pointsDataIndex+1] = currBucket[1].point
+                ctx.pointsData[pointsDataIndex+2] = currBucket[2].point
+                pointsDataIndex += 3
             }
 
             debug_text("drawn points: ", pointsDataIndex)

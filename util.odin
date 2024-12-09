@@ -33,11 +33,11 @@ draw_centered_text :: proc "contextless" (text: cstring, posX, posY: i32, rot, f
     rl.DrawTextPro(rl.GetFontDefault(), text, {f32(posX), f32(posY)}, pivot, rot, fontSize, spacing, tint)
 }
 
-draw_vertical_line :: proc "contextless" (ctx: Context, x: i32, color: rl.Color) {
+draw_vertical_line :: proc "contextless" (ctx: ^Context, x: i32, color: rl.Color) {
     rl.DrawLine(x, 0, x, ctx.window.height, color)
 }
 
-draw_horizontal_line :: proc "contextless" (ctx: Context, y: i32, color: rl.Color) {
+draw_horizontal_line :: proc "contextless" (ctx: ^Context, y: i32, color: rl.Color) {
     rl.DrawLine(0, y, ctx.window.width, y, color)
 }
 
