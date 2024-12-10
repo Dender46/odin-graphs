@@ -162,16 +162,21 @@ game_update :: proc() -> bool {
         // Indices to points
         loopStart := 0
         loopEnd := len(ctx.fileElements)-1
-        for i in 0..<loopEnd {
-            if f32(ctx.fileElements[i].timestep) >= ctx.plotOffset {
-                loopStart = i
-                break
+        {
+            for i in 0..<loopEnd {
+                if f32(ctx.fileElements[i].timestep) >= ctx.plotOffset {
+                    loopStart = i
+                    break
+                }
             }
-        }
-        for i in loopStart..<loopEnd {
-            if f32(ctx.fileElements[i].timestep) >= ctx.zoomLevel+ctx.plotOffset {
-                loopEnd = i
-                break
+            maxTimestep := ctx.zoomLevel+ctx.plotOffset
+            if f32(ctx.fileElements[loopEnd].timestep) >= maxTimestep {
+                for i in loopStart..<loopEnd {
+                    if f32(ctx.fileElements[i].timestep) >= maxTimestep {
+                        loopEnd = i
+                        break
+                    }
+                }
             }
         }
         // (╯°□°）╯︵ ┻━┻
@@ -181,9 +186,9 @@ game_update :: proc() -> bool {
         loopStart = max(0, loopStart-2)
         loopEnd   = min(len(ctx.fileElements)-1, loopEnd+2)
 
-        maxPointsOnPlot :: 5_000
-        ctx.pointsPerBucket = max((loopEnd-loopStart) / maxPointsOnPlot, 1)
-        if ctx.pointsPerBucket == 1 {
+        maxPointsOnPlot :: 5_000 * 0.5
+        ctx.pointsPerBucket = max((loopEnd-loopStart) / (maxPointsOnPlot), 1)
+        if ctx.pointsPerBucket > 1 {
             // +2 for min and max points
             ctx.pointsPerBucket += 2
         }
@@ -245,38 +250,36 @@ game_update :: proc() -> bool {
 
                 currBucketBegin := i * ctx.pointsPerBucket
                 currBucketEnd   := (i+1) * ctx.pointsPerBucket
-                bestRank: f64 = -1
                 temp := get_point_on_plot(ctx, ctx.fileElements[currBucketBegin])
 
                 Point :: struct {
                     point: rl.Vector2,
                     index: int
                 }
-                currBucket: [3]Point
-                currBucket[0].point = temp // bestRanked
-                currBucket[1].point = temp // min
-                currBucket[2].point = temp // max
+                currBucket: [2]Point
+                currBucket[0].point = temp // min
+                currBucket[1].point = temp // max
 
                 for j in currBucketBegin..<currBucketEnd {
-                    pC := get_point_on_plot(ctx, ctx.fileElements[j]) // pointCurrent
-                    pB := ctx.pointsData[pointsDataIndex-1]
-                    pN := nextBucketPoint
-                    area := f64(abs(f64(pN.x * pC.y - pC.x * pN.y) + f64(pB.x * pN.y - pN.x * pB.y) + f64(pC.x * pB.y - pB.x * pC.y)) * 0.5)
-                    if area > bestRank {
-                        bestRank = area
-                        currBucket[0].point = pC
-                        currBucket[0].index = j
-                    }
-                    if pC.y < currBucket[1].point.y { currBucket[1].point = pC; currBucket[1].index = j }
-                    if pC.y > currBucket[2].point.y { currBucket[2].point = pC; currBucket[2].index = j }
+                    // TODO: Do we really need to calc area of a triangle? As for lttb algo
+                    // pB := ctx.pointsData[pointsDataIndex-1]
+                    // pN := nextBucketPoint
+                    // area := f64(abs(f64(pN.x * pC.y - pC.x * pN.y) + f64(pB.x * pN.y - pN.x * pB.y) + f64(pC.x * pB.y - pB.x * pC.y)) * 0.5)
+                    // if area > bestRank {
+                        //     bestRank = area
+                        //     currBucket[0].point = pC
+                        //     currBucket[0].index = j
+                        // }
+                    pC := get_point_on_plot(ctx, ctx.fileElements[j])
+                    if pC.y < currBucket[0].point.y { currBucket[0].point = pC; currBucket[0].index = j }
+                    if pC.y > currBucket[1].point.y { currBucket[1].point = pC; currBucket[1].index = j }
                 }
                 slice.sort_by(currBucket[:], proc(i, j: Point) -> bool {
                     return i.index < j.index 
                 })
                 ctx.pointsData[pointsDataIndex] = currBucket[0].point
                 ctx.pointsData[pointsDataIndex+1] = currBucket[1].point
-                ctx.pointsData[pointsDataIndex+2] = currBucket[2].point
-                pointsDataIndex += 3
+                pointsDataIndex += 2
             }
 
             debug_text("drawn points: ", pointsDataIndex)
