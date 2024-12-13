@@ -11,6 +11,7 @@ import rl "vendor:raylib"
 guiControlExclusiveMode := false
 guiControlExclusiveRec := rl.Rectangle{ 0, 0, 0, 0 }
 
+LineDimensions_Orient :: enum { NONE, HOR, VER }
 
 LineDimensions :: struct {
     using _ : struct #raw_union {
@@ -21,13 +22,34 @@ LineDimensions :: struct {
         using _: struct { y0, y1: i32 },
         y: i32
     },
+    orient: LineDimensions_Orient
+}
+
+draw_line :: proc(line: LineDimensions, color: rl.Color) {
+    using line
+    switch orient {
+        case .HOR:  rl.DrawLine(line.x0, line.y, line.x1, line.y, color)
+        case .VER:  rl.DrawLine(line.x, line.y0, line.x, line.y1, color)
+        case .NONE: rl.DrawLine(line.x0, line.y0, line.x1, line.y1, color)
+    }
 }
 
 draw_centered_text :: proc "contextless" (text: cstring, posX, posY: i32, rot, fontSize: f32, tint: rl.Color) {
     spacing := fontSize / 10
     textSize := rl.MeasureTextEx(rl.GetFontDefault(), text, fontSize, spacing)
     pivot := textSize / 2
-    when DEBUG_BOUNDARY && false {
+    when DEBUG_BOUNDARY {
+        rl.DrawRectanglePro({f32(posX), f32(posY), textSize.x, textSize.y}, pivot, rot, rl.ColorAlpha(rl.RED, 0.3))
+    }
+    rl.DrawTextPro(rl.GetFontDefault(), text, {f32(posX), f32(posY)}, pivot, rot, fontSize, spacing, tint)
+}
+
+draw_right_text :: proc "contextless" (text: cstring, posX, posY: i32, rot, fontSize: f32, tint: rl.Color) {
+    spacing := fontSize / 10
+    textSize := rl.MeasureTextEx(rl.GetFontDefault(), text, fontSize, spacing)
+    pivot := textSize
+    pivot.y *= 0.5
+    when DEBUG_BOUNDARY {
         rl.DrawRectanglePro({f32(posX), f32(posY), textSize.x, textSize.y}, pivot, rot, rl.ColorAlpha(rl.RED, 0.3))
     }
     rl.DrawTextPro(rl.GetFontDefault(), text, {f32(posX), f32(posY)}, pivot, rot, fontSize, spacing, tint)

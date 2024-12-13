@@ -17,7 +17,14 @@ update_statics :: proc() {
     ctx.xAxisLine = {
         x0 = ctx.graphMargin,
         x1 = ctx.window.width - ctx.graphMargin,
-        y  = ctx.window.height - ctx.graphMargin - 30
+        y  = ctx.window.height - ctx.graphMargin - 30,
+        orient = .HOR,
+    }
+    ctx.yAxisLine = {
+        x = ctx.graphMargin,
+        y0 = ctx.graphMargin,
+        y1 = ctx.xAxisLine.y,
+        orient = .VER
     }
 }
 
@@ -28,7 +35,7 @@ game_init :: proc() {
 
     update_statics()
     ctx.zoomLevel = 60_000
-    ctx.targetZoomLevel = ctx.zoomLevel
+    ctx.zoomLevelTarget = ctx.zoomLevel
     ctx.pointsCount = 2400*1000*10
 
     rl.SetConfigFlags(ctx.window.configFlags)
@@ -109,7 +116,7 @@ game_update :: proc() -> bool {
             case h > 0                      : rightCaption = fmt.ctprintf(FORMAT_H_M, h, m)
         }
         
-        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.targetZoomLevel, 10, ctx.pointsCount) //40 mins
+        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.zoomLevelTarget, 10, ctx.pointsCount) //40 mins
     }
 
     // ========================================
@@ -117,10 +124,11 @@ game_update :: proc() -> bool {
     // ========================================
     if wheelMove := rl.GetMouseWheelMoveV().y; wheelMove != 0 {
         zoomExp :: -0.07
-        ctx.targetZoomLevel *= math.exp(zoomExp * wheelMove)
-        ctx.targetZoomLevel = clamp(ctx.targetZoomLevel, 10, ctx.pointsCount)
+        ctx.zoomLevelTarget *= math.exp(zoomExp * wheelMove)
+        ctx.zoomLevelTarget = clamp(ctx.zoomLevelTarget, 10, ctx.pointsCount)
     }
-    ctx.zoomLevel = exp_decay(ctx.zoomLevel, ctx.targetZoomLevel, 16, rl.GetFrameTime())
+    ctx.zoomLevel = exp_decay(ctx.zoomLevel, ctx.zoomLevelTarget, 16, rl.GetFrameTime())
+    ctx.maxValue = exp_decay(ctx.maxValue, ctx.maxValueTarget, 8, rl.GetFrameTime())
 
     // ========================================
     // Moving
@@ -136,7 +144,11 @@ game_update :: proc() -> bool {
     rl.BeginDrawing()
     rl.ClearBackground(rl.WHITE)
 
-    render_x_axis(ctx.plotOffset, ctx.zoomLevel)
+    x_axis_render(ctx.plotOffset, ctx.zoomLevel)
+    y_axis_render(ctx.maxValue)
+
+    draw_line(ctx.xAxisLine, GRAPH_COLOR)
+    draw_line(ctx.yAxisLine, GRAPH_COLOR)
 
     // h, m, s, ms := clock_from_nanoseconds(i64(abs(ctx.plotOffset)) * 1_000_000)
     //debug_text("plotOffset:")
@@ -155,9 +167,12 @@ game_update :: proc() -> bool {
             plotEnd := ctx.zoomLevel+ctx.plotOffset
             return {
                 remap(plotStart, plotEnd, f32(ctx.xAxisLine.x0), f32(ctx.xAxisLine.x1), f32(el.timestep)),
-                f32(math.lerp(f64(ctx.xAxisLine.y), f64(0), f64(convertedVal / 150))) // TODO: use yAxisLine TODO: change lerpT
+                f32(math.lerp(f64(ctx.xAxisLine.y), f64(0), f64(convertedVal) / f64(ctx.maxValue)))
             }
         }
+
+        newMaxValueTarget: f32
+        defer ctx.maxValueTarget = newMaxValueTarget * 1.5
 
         // Indices to points
         loopStart := 0
@@ -206,6 +221,7 @@ game_update :: proc() -> bool {
 
         if ctx.pointsPerBucket == 1 {
             for i in loopStart..<loopEnd {
+                newMaxValueTarget = max(newMaxValueTarget, f32(ctx.fileElements[i].value) / 1_000_000)
                 ctx.pointsData[i-loopStart] = get_point_on_plot(ctx, ctx.fileElements[i])
             }
 
@@ -270,12 +286,13 @@ game_update :: proc() -> bool {
                         //     currBucket[0].point = pC
                         //     currBucket[0].index = j
                         // }
+                    newMaxValueTarget = max(newMaxValueTarget, f32(ctx.fileElements[j].value) / 1_000_000)
                     pC := get_point_on_plot(ctx, ctx.fileElements[j])
                     if pC.y < currBucket[0].point.y { currBucket[0].point = pC; currBucket[0].index = j }
                     if pC.y > currBucket[1].point.y { currBucket[1].point = pC; currBucket[1].index = j }
                 }
                 slice.sort_by(currBucket[:], proc(i, j: Point) -> bool {
-                    return i.index < j.index 
+                    return i.index < j.index
                 })
                 ctx.pointsData[pointsDataIndex] = currBucket[0].point
                 ctx.pointsData[pointsDataIndex+1] = currBucket[1].point
