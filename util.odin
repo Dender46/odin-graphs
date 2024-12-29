@@ -4,6 +4,8 @@ import "core:math"
 import "core:fmt"
 import rl "vendor:raylib"
 
+DEBUG_BOUNDARY :: false
+
 // =============== RAYLIB ===============
 
 // These values are identical in raygui.h, but they are static to that file and not exposed
