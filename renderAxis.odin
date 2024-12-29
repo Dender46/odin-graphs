@@ -67,6 +67,10 @@ y_axis_render :: proc(maxValue: f32) {
 
     for i: f32 = 0; i < segmentSize*segmentsCount; i += segmentSize {
         pos := i32(remap(f32(0), maxValue, f32(ctx.yAxisLine.y1), f32(ctx.yAxisLine.y0), i))
+        // -1 to add padding for top most segment
+        if pos < ctx.yAxisLine.x0 - 1 {
+            break
+        }
 
         markLineSize: i32 : 15
         segmentLineMark := LineDimensions {
