@@ -29,6 +29,7 @@ Graph :: struct {
 
     pointsCount     : f32,
     data            : ^[dynamic][2]i64,
+    reducedData     : [dynamic][2]i64,
     pointsBuffer    : [dynamic][2]f32,
 
     pointsPerBucket : int,
@@ -42,16 +43,18 @@ graph_init :: proc(settings: GraphSettings, data: ^[dynamic][2]i64) -> (graph: G
     graph.zoomLevelTarget = settings.zoomLevel
 
     graph.data = data
-    graph.pointsBuffer = make([dynamic][2]f32, len(data))
-    graph.pointsCount = f32(data[len(data)-1][0]) * 1.1 // TODO: Add option of how much user wants to scroll on x axis
+    graph.pointsBuffer = make([dynamic][2]f32, len(data)) // TODO: We probably don't need to allocate that much
+    graph.reducedData = make([dynamic][2]i64, len(data))  // TODO: Same as here ^^^
+    graph.pointsCount = f32(data[len(data)-1][0]) * 1.1   // TODO: Add option of how much user wants to scroll on x axis
 
     graph.xAxisLine.orient = .HOR
     graph.yAxisLine.orient = .VER
     return
 }
 
-graph_delete :: proc(graph:^ Graph) {
-    delete(graph.pointsBuffer)
+graph_delete :: proc(g:^ Graph) {
+    delete(g.pointsBuffer)
+    delete(g.reducedData)
 }
 
 graph_update :: proc(graph: ^Graph) {
@@ -128,18 +131,14 @@ graph_update :: proc(graph: ^Graph) {
     loopStart = max(0, loopStart-2)
     loopEnd   = min(len(data)-1, loopEnd+2)
 
-    maxPointsOnPlot :: 3500 * 0.5
-    pointsPerBucket = max((loopEnd-loopStart) / (maxPointsOnPlot), 1)
-    if pointsPerBucket > 1 {
-        // +2 for min and max points
-        pointsPerBucket += 2
-    }
-
+    maxPointsOnGraph :: 3000 // actual max count of points will be either 1.333x or 1.5x more
+    newPointsPerBucket := max((loopEnd-loopStart) / (maxPointsOnGraph / 2), 1)
     {
-        pointsPerBucket_f := f32(pointsPerBucket)
-        // GuiSlider_Custom({100, 0, 600, 28}, "", "", &pointsPerBucket_f, 5, 100)
-        pointsPerBucket = int(pointsPerBucket_f)
+        // Get two right-most bits of a value to get more gradular change when scrolling in/out
+        hibit := int(hi_bit(u32(newPointsPerBucket)))
+        newPointsPerBucket = hibit | (newPointsPerBucket & (hibit >> 1))
     }
+    pointsPerBucket = newPointsPerBucket
 
     debug_padding()
     debug_text("loopStart: ", loopStart)
@@ -156,7 +155,11 @@ graph_update :: proc(graph: ^Graph) {
 
         pointsBufferSize = i32(loopEnd-loopStart)
     } else {
-        pointsBufferSize, newMaxValueTarget = graph_decimate_data(graph, loopStart, loopEnd)
+        pointsBufferSize = graph_decimate_data(graph, loopStart, loopEnd)
+        for i in 0..<pointsBufferSize {
+            newMaxValueTarget = max(newMaxValueTarget, f64(reducedData[i][1]) / 1_000_000)
+            pointsBuffer[i] = get_point_on_graph(graph, reducedData[i])
+        }
     }
 
     debug_text("drawn points: ", pointsBufferSize)
@@ -164,7 +167,7 @@ graph_update :: proc(graph: ^Graph) {
 }
 
 @(private)
-graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) -> (pointsBufferSize: i32, newMaxValueTarget: f64) {
+graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) -> (pointsBufferSize: i32) {
     using g
     firstBucketIndex := loopStart / pointsPerBucket
     lastBucketIndex  := loopEnd   / pointsPerBucket - 1
@@ -176,38 +179,34 @@ graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) -> (pointsBuffer
     debug_text("bucketsCount: ", bucketsCount)
     debug_padding()
 
-    {
-        firstEl := data[loopStart]
-        lastEl  := data[loopEnd]
-        pointsBuffer[0] = get_point_on_graph(g, firstEl)
-        pointsBuffer[bucketsCount-1] = get_point_on_graph(g, lastEl)
-    }
+    // Set first and last points (first and last bucket)
+    reducedData[0] = data[loopStart]
+    reducedData[bucketsCount-1] = data[loopEnd]
 
     // Skip ranking first and last bucket
     pointsBufferIndex := 1
     for i in (firstBucketIndex+1)..<lastBucketIndex {
-        nextBucketPoint: [2]f32
+        nextBucketPoint: [2]i64
         if i == lastBucketIndex-2 { // instead of ranking last bucket - use last value
-            nextBucketPoint = pointsBuffer[bucketsCount-1]
+            nextBucketPoint = reducedData[bucketsCount-1]
         } else {
-            timestepAvg, valueAvg: f32
+            timestepAvg, valueAvg: i64
             nextBucketBegin := (i+1)*pointsPerBucket
             nextBucketEnd   := (i+2)*pointsPerBucket
             for j in nextBucketBegin..<nextBucketEnd {
-                p := get_point_on_graph(g, data[j])
-                timestepAvg += p.x
-                valueAvg    += p.y
+                timestepAvg += data[j][0]
+                valueAvg    += data[j][1]
             }
-            nextBucketPoint.x = timestepAvg / f32(pointsPerBucket)
-            nextBucketPoint.y = valueAvg    / f32(pointsPerBucket)
+            nextBucketPoint.x = timestepAvg / i64(pointsPerBucket)
+            nextBucketPoint.y = valueAvg    / i64(pointsPerBucket)
         }
 
         currBucketBegin := i * pointsPerBucket
         currBucketEnd   := (i+1) * pointsPerBucket
-        temp := get_point_on_graph(g, data[currBucketBegin])
+        temp := data[currBucketBegin]
 
         Point :: struct {
-            point: [2]f32,
+            point: [2]i64,
             index: int
         }
         currBucket: [2]Point
@@ -216,7 +215,7 @@ graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) -> (pointsBuffer
 
         for j in currBucketBegin..<currBucketEnd {
             // TODO: Do we really need to calc area of a triangle as for lttb algo? It's more expensive that just min/max
-            // pB := pointsBuffer[pointsBufferIndex-1]
+            // pB := reducedData[pointsBufferIndex-1]
             // pN := nextBucketPoint
             // area := f64(abs(f64(pN.x * pC.y - pC.x * pN.y) + f64(pB.x * pN.y - pN.x * pB.y) + f64(pC.x * pB.y - pB.x * pC.y)) * 0.5)
             // if area > bestRank {
@@ -224,16 +223,15 @@ graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) -> (pointsBuffer
                 //     currBucket[0].point = pC
                 //     currBucket[0].index = j
                 // }
-            newMaxValueTarget = max(newMaxValueTarget, f64(data[j][1]) / 1_000_000)
-            pC := get_point_on_graph(g, data[j])
+            pC := data[j]
             if pC.y < currBucket[0].point.y { currBucket[0].point = pC; currBucket[0].index = j }
             if pC.y > currBucket[1].point.y { currBucket[1].point = pC; currBucket[1].index = j }
         }
         slice.sort_by(currBucket[:], proc(i, j: Point) -> bool {
             return i.index < j.index
         })
-        pointsBuffer[pointsBufferIndex] = currBucket[0].point
-        pointsBuffer[pointsBufferIndex+1] = currBucket[1].point
+        reducedData[pointsBufferIndex] = currBucket[0].point
+        reducedData[pointsBufferIndex+1] = currBucket[1].point
         pointsBufferIndex += 2
     }
     pointsBufferSize = i32(pointsBufferIndex)

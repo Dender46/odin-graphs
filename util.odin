@@ -151,3 +151,13 @@ bytes_to_int64 :: proc(buf: []u8) -> (res: i64) {
     res |= i64(buf[7]) << 56
     return
 }
+
+hi_bit :: proc(n: u32) -> u32 {
+    n := n
+    n |= (n >>  1);
+    n |= (n >>  2);
+    n |= (n >>  4);
+    n |= (n >>  8);
+    n |= (n >> 16);
+    return n - (n >> 1);
+}

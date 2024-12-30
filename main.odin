@@ -37,11 +37,12 @@ game_init :: proc() {
         defer delete(fileBytes)
 
         fileSize, _ := os.file_size(fileHandle)
-        reserve(&ctx.fileData, fileSize / 16 * 3)
+        dataMultiplier :: 12
+        reserve(&ctx.fileData, fileSize / 16 * dataMultiplier)
 
         if ok1 && len(fileBytes) == int(fileSize) {
             lastTimeStamp: i64 = 0
-            for i in 0..<3 {
+            for i in 0..<dataMultiplier {
                 firstTimestep := bytes_to_int64(fileBytes[:8])
     
                 for i := 0; i < len(fileBytes); i += 16 {
