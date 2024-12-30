@@ -114,8 +114,8 @@ GuiSlider_Custom :: proc(bounds: rl.Rectangle, textLeft: cstring, textRight: cst
 // b - to
 // decay - approx. from 1 (slow) to 25 (fast)
 // dt - deltaTime
-exp_decay :: proc "contextless" (a, b, decay, dt: f32) -> f32 {
-    return b+(a-b)*math.exp(-decay*dt)
+exp_decay :: proc "contextless" (a, b: $T, decay, dt: f32) -> T {
+    return b + (a - b) * T(math.exp(-decay * dt))
 }
 
 inv_lerp :: proc "contextless" (a, b, val: $T) -> T {

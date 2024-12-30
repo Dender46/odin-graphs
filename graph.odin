@@ -32,8 +32,8 @@ Graph :: struct {
     pointsBuffer    : [dynamic][2]f32,
 
     pointsPerBucket : int,
-    maxValue        : f32,
-    maxValueTarget  : f32,
+    maxValue        : f64,
+    maxValueTarget  : f64,
 }
 
 graph_init :: proc(settings: GraphSettings, data: ^[dynamic][2]i64) -> (graph: Graph) {
@@ -99,9 +99,8 @@ graph_update :: proc(graph: ^Graph) {
     // ========================================
     // Render plot line
     // ========================================
-    newMaxValueTarget: f32
+    newMaxValueTarget: f64
     defer maxValueTarget = newMaxValueTarget * 1.5
-
     // Indices to points
     loopStart := 0
     loopEnd := len(data)-1
@@ -146,101 +145,110 @@ graph_update :: proc(graph: ^Graph) {
     debug_text("loopStart: ", loopStart)
     debug_text("loopEnd: ", loopEnd)
     debug_text("pointsPerBucket: ", pointsPerBucket)
+    debug_padding()
 
+    pointsBufferSize: i32
     if pointsPerBucket == 1 {
         for i in loopStart..<loopEnd {
-            newMaxValueTarget = max(newMaxValueTarget, f32(data[i][1]) / 1_000_000)
+            newMaxValueTarget = max(newMaxValueTarget, f64(data[i][1]) / 1_000_000)
             pointsBuffer[i-loopStart] = get_point_on_graph(graph, data[i])
         }
 
-        debug_text("drawn points: ", loopEnd-loopStart)
-        rl.DrawSplineLinear(raw_data(pointsBuffer[:]), i32(loopEnd-loopStart), 3, rl.BLUE)
+        pointsBufferSize = i32(loopEnd-loopStart)
     } else {
-        firstBucketIndex := loopStart / pointsPerBucket
-        lastBucketIndex  := loopEnd   / pointsPerBucket - 1
-        bucketsCount := lastBucketIndex - firstBucketIndex + 1
-
-        debug_padding()
-        debug_text("firstBucketIndex: ", firstBucketIndex)
-        debug_text("lastBucketIndex: ", lastBucketIndex)
-        debug_text("bucketsCount: ", bucketsCount)
-
-        {
-            firstEl := data[loopStart]
-            lastEl  := data[loopEnd]
-            pointsBuffer[0] = get_point_on_graph(graph, firstEl)
-            pointsBuffer[bucketsCount-1] = get_point_on_graph(graph, lastEl)
-        }
-
-        // Skip ranking first and last bucket
-        pointsBufferIndex := 1
-        for i in (firstBucketIndex+1)..<lastBucketIndex {
-            nextBucketPoint: rl.Vector2
-            if i == lastBucketIndex-2 { // instead of ranking last bucket - use last value
-                nextBucketPoint = pointsBuffer[bucketsCount-1]
-            } else {
-                timestepAvg, valueAvg: f32
-                nextBucketBegin := (i+1)*pointsPerBucket
-                nextBucketEnd   := (i+2)*pointsPerBucket
-                for j in nextBucketBegin..<nextBucketEnd {
-                    p := get_point_on_graph(graph, data[j])
-                    timestepAvg += p.x
-                    valueAvg    += p.y
-                }
-                nextBucketPoint.x = timestepAvg / f32(pointsPerBucket)
-                nextBucketPoint.y = valueAvg    / f32(pointsPerBucket)
-            }
-
-            currBucketBegin := i * pointsPerBucket
-            currBucketEnd   := (i+1) * pointsPerBucket
-            temp := get_point_on_graph(graph, data[currBucketBegin])
-
-            Point :: struct {
-                point: rl.Vector2,
-                index: int
-            }
-            currBucket: [2]Point
-            currBucket[0].point = temp // min
-            currBucket[1].point = temp // max
-
-            for j in currBucketBegin..<currBucketEnd {
-                // TODO: Do we really need to calc area of a triangle as for lttb algo? It's more expensive that just min/max
-                // pB := pointsBuffer[pointsBufferIndex-1]
-                // pN := nextBucketPoint
-                // area := f64(abs(f64(pN.x * pC.y - pC.x * pN.y) + f64(pB.x * pN.y - pN.x * pB.y) + f64(pC.x * pB.y - pB.x * pC.y)) * 0.5)
-                // if area > bestRank {
-                    //     bestRank = area
-                    //     currBucket[0].point = pC
-                    //     currBucket[0].index = j
-                    // }
-                newMaxValueTarget = max(newMaxValueTarget, f32(data[j][1]) / 1_000_000)
-                pC := get_point_on_graph(graph, data[j])
-                if pC.y < currBucket[0].point.y { currBucket[0].point = pC; currBucket[0].index = j }
-                if pC.y > currBucket[1].point.y { currBucket[1].point = pC; currBucket[1].index = j }
-            }
-            slice.sort_by(currBucket[:], proc(i, j: Point) -> bool {
-                return i.index < j.index
-            })
-            pointsBuffer[pointsBufferIndex] = currBucket[0].point
-            pointsBuffer[pointsBufferIndex+1] = currBucket[1].point
-            pointsBufferIndex += 2
-        }
-
-        debug_text("drawn points: ", pointsBufferIndex)
-        rl.DrawSplineLinear(raw_data(pointsBuffer[:]), i32(pointsBufferIndex), 3, rl.BLUE)
+        pointsBufferSize, newMaxValueTarget = graph_decimate_data(graph, loopStart, loopEnd)
     }
+
+    debug_text("drawn points: ", pointsBufferSize)
+    rl.DrawSplineLinear(raw_data(pointsBuffer[:]), pointsBufferSize, 3, rl.BLUE)
 }
 
 @(private)
-get_point_on_graph :: proc(g: ^Graph, el: [2]i64) -> rl.Vector2 {
+graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) -> (pointsBufferSize: i32, newMaxValueTarget: f64) {
     using g
+    firstBucketIndex := loopStart / pointsPerBucket
+    lastBucketIndex  := loopEnd   / pointsPerBucket - 1
+    bucketsCount := lastBucketIndex - firstBucketIndex + 1
+
+    debug_padding()
+    debug_text("firstBucketIndex: ", firstBucketIndex)
+    debug_text("lastBucketIndex: ", lastBucketIndex)
+    debug_text("bucketsCount: ", bucketsCount)
+    debug_padding()
+
+    {
+        firstEl := data[loopStart]
+        lastEl  := data[loopEnd]
+        pointsBuffer[0] = get_point_on_graph(g, firstEl)
+        pointsBuffer[bucketsCount-1] = get_point_on_graph(g, lastEl)
+    }
+
+    // Skip ranking first and last bucket
+    pointsBufferIndex := 1
+    for i in (firstBucketIndex+1)..<lastBucketIndex {
+        nextBucketPoint: [2]f32
+        if i == lastBucketIndex-2 { // instead of ranking last bucket - use last value
+            nextBucketPoint = pointsBuffer[bucketsCount-1]
+        } else {
+            timestepAvg, valueAvg: f32
+            nextBucketBegin := (i+1)*pointsPerBucket
+            nextBucketEnd   := (i+2)*pointsPerBucket
+            for j in nextBucketBegin..<nextBucketEnd {
+                p := get_point_on_graph(g, data[j])
+                timestepAvg += p.x
+                valueAvg    += p.y
+            }
+            nextBucketPoint.x = timestepAvg / f32(pointsPerBucket)
+            nextBucketPoint.y = valueAvg    / f32(pointsPerBucket)
+        }
+
+        currBucketBegin := i * pointsPerBucket
+        currBucketEnd   := (i+1) * pointsPerBucket
+        temp := get_point_on_graph(g, data[currBucketBegin])
+
+        Point :: struct {
+            point: [2]f32,
+            index: int
+        }
+        currBucket: [2]Point
+        currBucket[0].point = temp // min
+        currBucket[1].point = temp // max
+
+        for j in currBucketBegin..<currBucketEnd {
+            // TODO: Do we really need to calc area of a triangle as for lttb algo? It's more expensive that just min/max
+            // pB := pointsBuffer[pointsBufferIndex-1]
+            // pN := nextBucketPoint
+            // area := f64(abs(f64(pN.x * pC.y - pC.x * pN.y) + f64(pB.x * pN.y - pN.x * pB.y) + f64(pC.x * pB.y - pB.x * pC.y)) * 0.5)
+            // if area > bestRank {
+                //     bestRank = area
+                //     currBucket[0].point = pC
+                //     currBucket[0].index = j
+                // }
+            newMaxValueTarget = max(newMaxValueTarget, f64(data[j][1]) / 1_000_000)
+            pC := get_point_on_graph(g, data[j])
+            if pC.y < currBucket[0].point.y { currBucket[0].point = pC; currBucket[0].index = j }
+            if pC.y > currBucket[1].point.y { currBucket[1].point = pC; currBucket[1].index = j }
+        }
+        slice.sort_by(currBucket[:], proc(i, j: Point) -> bool {
+            return i.index < j.index
+        })
+        pointsBuffer[pointsBufferIndex] = currBucket[0].point
+        pointsBuffer[pointsBufferIndex+1] = currBucket[1].point
+        pointsBufferIndex += 2
+    }
+    pointsBufferSize = i32(pointsBufferIndex)
+    return
+}
+
+@(private)
+get_point_on_graph :: proc(g: ^Graph, el: [2]i64) -> [2]f32 {
     // for testing convert initial values in nanoseconds to milliseconds
     convertedVal := f64(el[1]) / 1_000_000
-    plotStart := plotOffset
-    plotEnd := zoomLevel + plotOffset
+    plotStart := g.plotOffset
+    plotEnd := g.zoomLevel + g.plotOffset
     return {
-        remap(plotStart, plotEnd, f32(xAxisLine.x0), f32(xAxisLine.x1), f32(el[0])),
-        f32(math.lerp(f64(xAxisLine.y), f64(0), f64(convertedVal) / f64(maxValue)))
+        remap(plotStart, plotEnd, f32(g.xAxisLine.x0), f32(g.xAxisLine.x1), f32(el[0])),
+        f32(math.lerp(f64(g.xAxisLine.y), f64(0), f64(convertedVal) / f64(g.maxValue)))
     }
 }
 
@@ -255,8 +263,6 @@ x_axis_width :: proc "contextless" (g: ^Graph) -> f32 {
 }
 
 x_axis_render :: proc(g: ^Graph) {
-    using g
-
     segmentsCount: f32 = 10
     segmentTime := find_appropriate_time_interval(g.zoomLevel, segmentsCount)
     segmentsCount += 8 // increasing count so we can try to draw more segments than expected
@@ -301,16 +307,16 @@ x_axis_render :: proc(g: ^Graph) {
             case h > 0                      : graphHintLabel = fmt.ctprintf(FORMAT_H_M, h, m)
         }
 
-        draw_centered_text(graphHintLabel, pos, xAxisLine.y + markLineSize*2, 0, 20, SUB_GRAPH_COLOR)
+        draw_centered_text(graphHintLabel, pos, g.xAxisLine.y + markLineSize*2, 0, 20, SUB_GRAPH_COLOR)
     }
 }
 
 y_axis_render :: proc(g: ^Graph) {
     segmentsCount: f32 = 10
-    segmentSize := math.pow(10, math.floor(math.log10(g.maxValue)))
+    segmentSize := f32(math.pow(10, math.floor(math.log10(g.maxValue))))
 
     for i: f32 = 0; i < segmentSize*segmentsCount; i += segmentSize {
-        pos := i32(remap(f32(0), g.maxValue, f32(g.yAxisLine.y1), f32(g.yAxisLine.y0), i))
+        pos := i32(remap(f32(0), f32(g.maxValue), f32(g.yAxisLine.y1), f32(g.yAxisLine.y0), i))
         // -1 to add padding for top most segment
         if pos < g.yAxisLine.x0 - 1 {
             break
