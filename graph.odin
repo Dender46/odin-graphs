@@ -104,24 +104,19 @@ graph_update :: proc(graph: ^Graph) {
     // ========================================
     newMaxValueTarget: f64
     defer maxValueTarget = newMaxValueTarget * 1.5
-    // Indices to points
+    // Indices to data
     loopStart := 0
     loopEnd := len(data)-1
     {
-        for i in 0..<loopEnd {
-            if f32(data[i][0]) >= plotOffset {
-                loopStart = i
-                break
-            }
+        cmpProc := proc(el: [2]i64, target: f32) -> slice.Ordering {
+            return slice.cmp(f32(el[0]), target)
+        }
+        if f32(loopStart) != plotOffset {
+            loopStart, _ = slice.binary_search_by(data[loopStart:loopEnd], plotOffset, cmpProc)
         }
         maxTimestep := zoomLevel+plotOffset
         if f32(data[loopEnd][0]) >= maxTimestep {
-            for i in loopStart..<loopEnd {
-                if f32(data[i][0]) >= maxTimestep {
-                    loopEnd = i
-                    break
-                }
-            }
+            loopEnd, _ = slice.binary_search_by(data[:loopEnd], maxTimestep, cmpProc)
         }
     }
     // (╯°□°）╯︵ ┻━┻
