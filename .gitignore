@@ -8,5 +8,6 @@ game.lib
 *testing.txt
 *.exe
 *.pdb
+*.rdi
 *.bin
 ols.json

@@ -181,20 +181,21 @@ graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) -> (pointsBuffer
     // Skip ranking first and last bucket
     pointsBufferIndex := 1
     for i in (firstBucketIndex+1)..<lastBucketIndex {
-        nextBucketPoint: [2]i64
-        if i == lastBucketIndex-2 { // instead of ranking last bucket - use last value
-            nextBucketPoint = reducedData[bucketsCount-1]
-        } else {
-            timestepAvg, valueAvg: i64
-            nextBucketBegin := (i+1)*pointsPerBucket
-            nextBucketEnd   := (i+2)*pointsPerBucket
-            for j in nextBucketBegin..<nextBucketEnd {
-                timestepAvg += data[j][0]
-                valueAvg    += data[j][1]
-            }
-            nextBucketPoint.x = timestepAvg / i64(pointsPerBucket)
-            nextBucketPoint.y = valueAvg    / i64(pointsPerBucket)
-        }
+        // TODO: this is a part of lttb algo, but since we use min/max, we don't need to know next point
+        // nextBucketPoint: [2]i64
+        // if i == lastBucketIndex-2 { // instead of ranking last bucket - use last value
+        //     nextBucketPoint = reducedData[bucketsCount-1]
+        // } else {
+        //     timestepAvg, valueAvg: i64
+        //     nextBucketBegin := (i+1)*pointsPerBucket
+        //     nextBucketEnd   := (i+2)*pointsPerBucket
+        //     for j in nextBucketBegin..<nextBucketEnd {
+        //         timestepAvg += data[j][0]
+        //         valueAvg    += data[j][1]
+        //     }
+        //     nextBucketPoint.x = timestepAvg / i64(pointsPerBucket)
+        //     nextBucketPoint.y = valueAvg    / i64(pointsPerBucket)
+        // }
 
         currBucketBegin := i * pointsPerBucket
         currBucketEnd   := (i+1) * pointsPerBucket
