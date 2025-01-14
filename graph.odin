@@ -63,12 +63,12 @@ graph_update :: proc(graph: ^Graph) {
         using boundaries
         // Additional padding for content of graph. Content is dependant on position and size of axis
         xAxisLine.x0 = i32(x + padding) + 65
-        xAxisLine.x1 = i32(width - padding)
-        xAxisLine.y  = i32(height - padding) - 50
+        xAxisLine.x1 = i32(x + width - padding)
+        xAxisLine.y  = i32(y + height - padding) - 50
 
         yAxisLine.x = i32(x + padding) + 65
         yAxisLine.y0 = i32(y + padding)
-        yAxisLine.y1 = i32(height - padding) - 50
+        yAxisLine.y1 = i32(y + height - padding) - 50
     }
 
     // ========================================
