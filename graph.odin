@@ -126,7 +126,7 @@ graph_update :: proc(graph: ^Graph) {
     loopStart = max(0, loopStart-2)
     loopEnd   = min(len(data)-1, loopEnd+2)
 
-    maxPointsOnGraph :: 3000 // actual max count of points will be either 1.333x or 1.5x more
+    maxPointsOnGraph :: 3000 // actual max count of points will be either 1.333x or 1.5x more. Sweet spot is value 3000
     newPointsPerBucket := max((loopEnd-loopStart) / (maxPointsOnGraph / 2), 1)
     {
         // Get two right-most bits of a value to get more gradular change when scrolling in/out
@@ -242,7 +242,7 @@ get_point_on_graph :: proc(g: ^Graph, el: [2]i64) -> [2]f32 {
     plotEnd := g.zoomLevel + g.plotOffset
     return {
         remap(plotStart, plotEnd, f32(g.xAxisLine.x0), f32(g.xAxisLine.x1), f32(el[0])),
-        f32(math.lerp(f64(g.xAxisLine.y), f64(0), f64(convertedVal) / f64(g.maxValue)))
+        remap(f32(0), f32(g.maxValue), f32(g.yAxisLine.y1), f32(g.yAxisLine.y0), f32(convertedVal))
     }
 }
 
