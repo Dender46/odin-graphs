@@ -44,15 +44,15 @@ game_init :: proc() {
             lastTimeStamp: i64 = 0
             for i in 0..<dataMultiplier {
                 firstTimestep := bytes_to_int64(fileBytes[:8])
-    
+
                 for i := 0; i < len(fileBytes); i += 16 {
                     timestep := bytes_to_int64(fileBytes[i:i+8])
-    
+
                     // Mul by 100 to convert from .NET ticks to nanoseconds
                     nanoseconds := (timestep - firstTimestep) * 100
                     // but for now lets keep it to milliseconds range
                     ms := nanoseconds / 1_000_000
-    
+
                     val := bytes_to_int64(fileBytes[i+8:i+16])
                     append(&ctx.fileData, [2]i64{
                         ms + lastTimeStamp,

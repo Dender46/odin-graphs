@@ -103,7 +103,7 @@ graph_update :: proc(graph: ^Graph) {
     // Render plot line
     // ========================================
     newMaxValueTarget: f64
-    defer maxValueTarget = newMaxValueTarget * 1.5
+    defer maxValueTarget = newMaxValueTarget * 1.1
     // Indices to data
     loopStart := 0
     loopEnd := len(data)-1
@@ -306,15 +306,22 @@ x_axis_render :: proc(g: ^Graph) {
 }
 
 y_axis_render :: proc(g: ^Graph) {
-    segmentsCount: f32 = 10
     segmentSize := f32(math.pow(10, math.floor(math.log10(g.maxValue))))
+    segmentSizeInView := remap(f32(0), f32(g.maxValue), f32(0), y_axis_height(g), segmentSize)
+    segmentsCount := y_axis_height(g) / segmentSizeInView
+
+    if segmentsCount <= 5 {
+        segmentSize /= 2
+        segmentsCount *= 2
+    }
+
+    if segmentsCount <= 3 {
+        segmentSize /= 2
+        segmentsCount *= 2
+    }
 
     for i: f32 = 0; i < segmentSize*segmentsCount; i += segmentSize {
         pos := i32(remap(f32(0), f32(g.maxValue), f32(g.yAxisLine.y1), f32(g.yAxisLine.y0), i))
-        // -1 to add padding for top most segment
-        if pos < g.yAxisLine.x0 - 1 {
-            break
-        }
 
         segmentLine := LineDimensions {
             x0 = g.xAxisLine.x0,
