@@ -15,7 +15,7 @@ GraphBoundaries :: struct {
 
 GraphSettings :: struct {
     boundaries      : GraphBoundaries,
-    zoomLevel       : f32,
+    zoomLevel       : f64,
 }
 
 Graph :: struct {
@@ -24,13 +24,18 @@ Graph :: struct {
     xAxisLine       : LineDimensions,
     yAxisLine       : LineDimensions,
 
-    plotOffset      : f32, // in milliseconds
-    zoomLevelTarget : f32, // **DO NOT USE THIS**: only used to calc smoothness
+    plotOffset      : f64, // in milliseconds
+    zoomLevelTarget : f64, // **DO NOT USE THIS**: only used to calc smoothness
+
+    mouseWidgetAlpha: f32,
+    mousePosPlotTarget: rl.Vector2, // **DO NOT USE THIS**: only used to calc smoothness
+    mouseClosesToIdx: i32,
 
     pointsCount     : f32,
     data            : ^[dynamic][2]i64,
     reducedData     : [dynamic][2]i64,
     pointsBuffer    : [dynamic][2]f32,
+    pointsBufferSize: i32,
 
     pointsPerBucket : int,
     maxValue        : f64,
@@ -49,10 +54,16 @@ graph_init :: proc(settings: GraphSettings, data: ^[dynamic][2]i64) -> (graph: G
 
     graph.xAxisLine.orient = .HOR
     graph.yAxisLine.orient = .VER
+
+    graph_update(&graph)
+    // Init values that will be used in the next `graph_update()` and `graph_draw()` calls
+    graph.maxValue = graph.maxValueTarget
+
     return
 }
 
 graph_delete :: proc(g:^ Graph) {
+    g.data = nil
     delete(g.pointsBuffer)
     delete(g.reducedData)
 }
@@ -74,48 +85,59 @@ graph_update :: proc(graph: ^Graph) {
     // ========================================
     // Zoom handling
     // ========================================
-    if wheelMove := rl.GetMouseWheelMoveV().y; wheelMove != 0 {
+    if wheelMove := f64(rl.GetMouseWheelMoveV().y); wheelMove != 0 {
         zoomExp :: -0.07
         zoomLevelTarget *= math.exp(zoomExp * wheelMove)
-        zoomLevelTarget = clamp(zoomLevelTarget, 10, pointsCount)
+        zoomLevelTarget = clamp(zoomLevelTarget, 10, f64(pointsCount))
     }
     zoomLevel = exp_decay(zoomLevel, zoomLevelTarget, 16, rl.GetFrameTime())
-    maxValue = exp_decay(maxValue, graph.maxValueTarget, 8, rl.GetFrameTime())
 
     // ========================================
     // Moving
     // ========================================
-    if rl.IsMouseButtonDown(.LEFT) && !guiControlExclusiveMode {
-        plotOffset -= remap(f32(0), x_axis_width(graph), f32(0), zoomLevel, rl.GetMouseDelta().x)
+    {
+        @static moveDelta: f32
+        @static keyboardScrollFadeSpeed: f32
+        switch {
+            // mouse
+            case rl.IsMouseButtonDown(.LEFT) && !guiControlExclusiveMode : {
+                moveDelta = rl.GetMouseDelta().x
+            }
+            case rl.IsMouseButtonReleased(.LEFT) : {
+                moveDelta = 0
+            }
+            // keyboard
+            case rl.IsKeyPressed(.A) || rl.IsKeyPressedRepeat(.A) : {
+                moveDelta = 20
+            }
+            case rl.IsKeyPressed(.D) || rl.IsKeyPressedRepeat(.D) : {
+                moveDelta = -20
+            }
+        }
+
+        moveDelta = exp_decay(moveDelta, 0, 16, rl.GetFrameTime()) // this is only if scrolling by keyboard
+        debug_text("moveDelta: ", moveDelta)
+        if moveDelta != 0 {
+            plotOffset -= remap(f64(0), f64(x_axis_width(graph)), 0, f64(zoomLevel), f64(moveDelta))
+        }
+        plotOffset = clamp(plotOffset, 0, f64(pointsCount)-zoomLevel)
     }
-    plotOffset = clamp(plotOffset, 0, pointsCount-zoomLevel)
 
-    // ========================================
-    // Render axis
-    // ========================================
-    x_axis_render(graph)
-    y_axis_render(graph)
-
-    draw_line(xAxisLine, GRAPH_COLOR)
-    draw_line(yAxisLine, GRAPH_COLOR)
-
-    // ========================================
-    // Render plot line
-    // ========================================
-    newMaxValueTarget: f64
-    defer maxValueTarget = newMaxValueTarget * 1.1
+    // ====================================================================
+    // Reduce, if needed, and remap data to screen points buffer
+    // ====================================================================
     // Indices to data
     loopStart := 0
     loopEnd := len(data)-1
     {
-        cmpProc := proc(el: [2]i64, target: f32) -> slice.Ordering {
-            return slice.cmp(f32(el[0]), target)
+        cmpProc := proc(el: [2]i64, target: f64) -> slice.Ordering {
+            return slice.cmp(el[0], i64(target))
         }
-        if f32(loopStart) != plotOffset {
+        if f64(loopStart) != plotOffset {
             loopStart, _ = slice.binary_search_by(data[loopStart:loopEnd], plotOffset, cmpProc)
         }
         maxTimestep := zoomLevel+plotOffset
-        if f32(data[loopEnd][0]) >= maxTimestep {
+        if f64(data[loopEnd][0]) >= maxTimestep {
             loopEnd, _ = slice.binary_search_by(data[:loopEnd], maxTimestep, cmpProc)
         }
     }
@@ -141,28 +163,124 @@ graph_update :: proc(graph: ^Graph) {
     debug_text("pointsPerBucket: ", pointsPerBucket)
     debug_padding()
 
-    pointsBufferSize: i32
+    mousePosScreenX := rl.GetMousePosition().x
+    mousePosScreenX = clamp(mousePosScreenX, f32(graph.xAxisLine.x0), f32(graph.xAxisLine.x1))
+    mousePosScreenX = remap(f32(graph.xAxisLine.x0), f32(graph.xAxisLine.x1), f32(graph.plotOffset), f32(graph.plotOffset+graph.zoomLevel), mousePosScreenX)
+    debug_text("mousePosScreenX: ", mousePosScreenX)
+
+    newMaxValueTarget: f64
+    defer {
+        maxValueTarget = newMaxValueTarget * 1.1
+        graph.maxValue = exp_decay(graph.maxValue, graph.maxValueTarget, 8, rl.GetFrameTime())
+    }
+
+    minDistToMouse: f32 = max(f32)
     if pointsPerBucket == 1 {
+    // if false {
+        pointsBufferSize = i32(loopEnd-loopStart)
         for i in loopStart..<loopEnd {
+            // finding index of datapoint closest to the mouse
+            distToMouse := abs(f32(data[i][0]) - mousePosScreenX)
+            if minDistToMouse > distToMouse {
+                mouseClosesToIdx = i32(i - loopStart) // -loopStart because we want index of plotted points
+                minDistToMouse = distToMouse
+            }
+
             newMaxValueTarget = max(newMaxValueTarget, f64(data[i][1]) / 1_000_000)
             pointsBuffer[i-loopStart] = get_point_on_graph(graph, data[i])
         }
-
-        pointsBufferSize = i32(loopEnd-loopStart)
     } else {
-        pointsBufferSize = graph_decimate_data(graph, loopStart, loopEnd)
+        graph_decimate_data(graph, loopStart, loopEnd)
         for i in 0..<pointsBufferSize {
+            // finding index of datapoint closest to the mouse
+            distToMouse := abs(f32(reducedData[i][0]) - mousePosScreenX)
+            if minDistToMouse > distToMouse {
+                mouseClosesToIdx = i32(i)
+                minDistToMouse = distToMouse
+            }
+
             newMaxValueTarget = max(newMaxValueTarget, f64(reducedData[i][1]) / 1_000_000)
             pointsBuffer[i] = get_point_on_graph(graph, reducedData[i])
         }
     }
-
-    debug_text("drawn points: ", pointsBufferSize)
-    rl.DrawSplineLinear(raw_data(pointsBuffer[:]), pointsBufferSize, 3, rl.BLUE)
 }
 
 @(private)
-graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) -> (pointsBufferSize: i32) {
+graph_draw :: proc(g: ^Graph) {
+    // ========================================
+    // Render axis
+    // ========================================
+    x_axis_render(g)
+    y_axis_render(g)
+
+    draw_line(g.xAxisLine, GRAPH_COLOR)
+    draw_line(g.yAxisLine, GRAPH_COLOR)
+
+    // =====================================================================
+    // Render plotline
+    //=====================================================================
+    debug_text("drawn points: ", g.pointsBufferSize)
+    rl.DrawSplineLinear(raw_data(g.pointsBuffer[:]), g.pointsBufferSize, 3, rl.BLUE)
+
+    // =====================================================================
+    // Render widget of datapoint and circle highlighter on the plot
+    //=====================================================================
+    {
+        mousePosPlot := rl.Vector2{ g.pointsBuffer[g.mouseClosesToIdx].x, g.pointsBuffer[g.mouseClosesToIdx].y }
+        // Highlighter on the plot
+        rl.DrawCircle(i32(mousePosPlot.x), i32(mousePosPlot.y), 6, rl.BLUE)
+
+        // Init target value if not inited
+        if g.mousePosPlotTarget == {0, 0} {
+            g.mousePosPlotTarget = mousePosPlot
+        }
+        g.mousePosPlotTarget = exp_decay(g.mousePosPlotTarget, mousePosPlot, 22, rl.GetFrameTime())
+
+        // Widget alpha fade-in/out
+        mousePos := rl.GetMousePosition()
+        if rl.Vector2Distance(mousePos, mousePosPlot) < 200 {
+            g.mouseWidgetAlpha += rl.GetFrameTime() * 15
+        } else {
+            g.mouseWidgetAlpha -= rl.GetFrameTime() * 15
+        }
+        g.mouseWidgetAlpha = clamp(g.mouseWidgetAlpha, 0.0, 0.7)
+        widgetBgColor := rl.ColorAlpha(rl.ColorBrightness(rl.BLUE, 0.3), g.mouseWidgetAlpha) // lighter blue
+        widgetTextColor := rl.ColorAlpha(rl.DARKBLUE, g.mouseWidgetAlpha)
+
+        // Draw little triangle pointer from widget to plot
+        g.mousePosPlotTarget.y -= 5
+        rl.DrawTriangle(
+            { g.mousePosPlotTarget.x, g.mousePosPlotTarget.y },
+            { g.mousePosPlotTarget.x + 10, g.mousePosPlotTarget.y - 10 },
+            { g.mousePosPlotTarget.x - 10, g.mousePosPlotTarget.y - 10 },
+            widgetBgColor
+        )
+
+        // Draw widget rectangle
+        g.mousePosPlotTarget.y -= 10
+        width: f32 = 260 // TODO: Adjust to text size?
+        height: f32 = 75
+        widgetRect := rl.Rectangle{
+            g.mousePosPlotTarget.x - width/2, g.mousePosPlotTarget.y - height,
+            width, height
+        }
+        rl.DrawRectangleRounded(widgetRect, 0.2, 5, widgetBgColor)
+
+        // Draw text
+        plotDataObject := g.reducedData[g.mouseClosesToIdx]
+        xAxisText := fmt.ctprintf("Time: " + FORMAT_H_M_S_MS, clock_from_nanoseconds(i64(plotDataObject[0]) * 1_000_000))
+        yAxisText := fmt.ctprint("Value: ", plotDataObject[0])
+        xPos := i32(widgetRect.x) + 15
+        yPos := i32(widgetRect.y) + 15
+        rl.DrawText(xAxisText, xPos, yPos, 20, widgetTextColor)
+        yPos += 25
+        rl.DrawText(yAxisText, xPos, yPos, 20, widgetTextColor)
+
+    }
+}
+
+@(private)
+graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) {
     using g
     firstBucketIndex := loopStart / pointsPerBucket
     lastBucketIndex  := loopEnd   / pointsPerBucket - 1
@@ -230,19 +348,19 @@ graph_decimate_data :: proc(g: ^Graph, loopStart, loopEnd: int) -> (pointsBuffer
         reducedData[pointsBufferIndex+1] = currBucket[1].point
         pointsBufferIndex += 2
     }
-    pointsBufferSize = i32(pointsBufferIndex)
+    g.pointsBufferSize = i32(pointsBufferIndex)
     return
 }
 
 @(private)
-get_point_on_graph :: proc(g: ^Graph, el: [2]i64) -> [2]f32 {
+get_point_on_graph :: proc(g: ^Graph, el: [2]i64) -> rl.Vector2 {
     // for testing convert initial values in nanoseconds to milliseconds
     convertedVal := f64(el[1]) / 1_000_000
     plotStart := g.plotOffset
     plotEnd := g.zoomLevel + g.plotOffset
     return {
-        remap(plotStart, plotEnd, f32(g.xAxisLine.x0), f32(g.xAxisLine.x1), f32(el[0])),
-        remap(f32(0), f32(g.maxValue), f32(g.yAxisLine.y1), f32(g.yAxisLine.y0), f32(convertedVal))
+        f32(remap(plotStart, plotEnd, f64(g.xAxisLine.x0), f64(g.xAxisLine.x1), f64(el[0]))),
+        f32(remap(f64(0), g.maxValue, f64(g.yAxisLine.y1), f64(g.yAxisLine.y0), f64(convertedVal)))
     }
 }
 
@@ -257,18 +375,17 @@ x_axis_width :: proc "contextless" (g: ^Graph) -> f32 {
 }
 
 x_axis_render :: proc(g: ^Graph) {
-    segmentsCount: f32 = 10
-    segmentTime := find_appropriate_time_interval(g.zoomLevel, segmentsCount)
-    segmentsCount += 8 // increasing count so we can try to draw more segments than expected
+    segmentTime := find_appropriate_time_interval(g.zoomLevel)
 
     segmentsOffsetInTime := math.floor(g.plotOffset / segmentTime) * segmentTime
+    segmentsCount: f64 = 18 // increasing count so we can try to draw more segments than expected
     lastSegmentTime := segmentsCount * segmentTime + segmentsOffsetInTime
 
     for i := segmentsOffsetInTime;
         i <= lastSegmentTime;
         i += segmentTime
     {
-        pos := i32(remap(g.plotOffset, g.zoomLevel + g.plotOffset, f32(g.xAxisLine.x0), f32(g.xAxisLine.x1), i))
+        pos := i32(remap(g.plotOffset, g.zoomLevel + g.plotOffset, f64(g.xAxisLine.x0), f64(g.xAxisLine.x1), f64(i)))
         if g.xAxisLine.x0 > pos {
             continue
         }
@@ -351,7 +468,7 @@ y_axis_render :: proc(g: ^Graph) {
 // Figure out decent amount of segments
 // in terms of 'seconds in interval' (should be 5, 10, 15, 30, 60, 120, 300...)
 @(private)
-find_appropriate_time_interval :: proc (zoomLvl, intervalCount: f32) -> (intervalInMS: f32) {
+find_appropriate_time_interval :: proc (zoomLvl: f64) -> (intervalInMS: f64) {
     d, h, m, s, ms := clock_from_nanoseconds_ex(i64(zoomLvl) * 1_000_000)
 
     MILLISECOND :: 1
@@ -396,7 +513,7 @@ find_appropriate_time_interval :: proc (zoomLvl, intervalCount: f32) -> (interva
     } else if d < 30 {
         debug_text("days: ", d)
         // TODO: keep handling the same way?
-        return f32(d+1) * 2 * HOUR
+        return f64(d+1) * 2 * HOUR
     }
 
     return

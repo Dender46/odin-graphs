@@ -10,6 +10,46 @@ import "core:slice"
 import "core:math/rand"
 import rl "vendor:raylib"
 
+generate_graph_data :: proc() {
+    GRAPH_SIZE :: 1_500_000
+    if cap(ctx.fileData) == 0 {
+        ctx.fileData = make([dynamic][2]i64)
+        reserve(&ctx.fileData, GRAPH_SIZE)
+    }
+    clear(&ctx.fileData)
+
+    t: i64
+    tf: f64
+    sin_func :: proc "contextless" (tf, freq, ampl: f64) -> f64 {
+        return math.sin(f64(tf * freq)) * ampl + ampl
+    }
+    noise :: proc(tf: f64, freqs, ampls: []f64, funcCount: int) -> (res: f64) {
+        for i in 0..<funcCount {
+            // freqMult := rand.float64_range(0.1, 0.9)
+            // amplMult := rand.float64_range(0.5, 0.6)
+            freqMult := 1.0
+            amplMult := 1.0
+            // res += sin_func(tf, freqs[i] * freqMult, ampls[i] * amplMult)
+            res += 1
+        }
+        return
+    }
+
+    funcCount :: 5
+    freqs := [funcCount]f64{ 1, 1, 10, 1, 1,   }
+    ampls := [funcCount]f64{ 1, 1, 1, 1, 1, }
+    for i in 0..<GRAPH_SIZE {
+        val := noise(tf, freqs[:], ampls[:], funcCount) * 1_000_000
+        append(&ctx.fileData, [2]i64{
+            t,
+            i64(val),
+        })
+        // t += i64(rand.float64_range(10, 30))
+        tf += 0.01
+        t += i64(tf)
+    }
+}
+
 @(export)
 game_init :: proc() {
     ctx = new(Context)
@@ -20,8 +60,8 @@ game_init :: proc() {
     rl.SetTargetFPS(ctx.window.fps)
 
     if true {
-        fileName :: "2024_08_22_14_16_Render_CPU_Main_Thread_Frame_Time.bin"
-        // fileName :: "2024_08_21_12_30_Render_CPU_Main_Thread_Frame_Time.bin"
+        // fileName :: "2024_08_22_14_16_Render_CPU_Main_Thread_Frame_Time.bin"
+        fileName :: "2024_08_22_14_16_Render_GPU_Frame_Time.bin"
         fileHandle, ok0 := os.open(fileName)
         if ok0 != os.ERROR_NONE {
             fmt.println("Couldn't open a file")
@@ -66,6 +106,8 @@ game_init :: proc() {
         }
     }
 
+    // generate_graph_data()
+
     graphSettings := GraphSettings{
         zoomLevel = 60_000,
         boundaries = {
@@ -101,19 +143,27 @@ game_update :: proc() -> bool {
             case h > 0                      : rightCaption = fmt.ctprintf(FORMAT_H_M, h, m)
         }
 
-        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &ctx.graph.zoomLevelTarget, 10, ctx.graph.pointsCount) //40 mins
+        @static f32_ptr: f32
+        f32_ptr = f32(ctx.graph.zoomLevelTarget)
+        GuiSlider_Custom(zoomLevelSliderRect, leftCaption, rightCaption, &f32_ptr, 10, ctx.graph.pointsCount) //40 mins
+        ctx.graph.zoomLevelTarget = f64(f32_ptr)
     }
 
     rl.BeginDrawing()
     rl.ClearBackground(rl.WHITE)
 
     graph_update(&ctx.graph)
+    graph_draw(&ctx.graph)
 
     // h, m, s, ms := clock_from_nanoseconds(i64(abs(ctx.plotOffset)) * 1_000_000)
     //debug_text("plotOffset:")
     //debug_text(ctx.plotOffset)
     //debug_textf(FORMAT_H_M_S_MS, h, m, s, ms)
     //debug_padding()
+
+    // if rl.IsKeyPressed(.A) {
+    //     generate_graph_data()
+    // }
 
     {
         @(static) hotReloadTimer: f32 = 3
