@@ -97,7 +97,6 @@ graph_update :: proc(graph: ^Graph) {
     // ========================================
     {
         @static moveDelta: f32
-        @static keyboardScrollFadeSpeed: f32
         switch {
             // mouse
             case rl.IsMouseButtonDown(.LEFT) && !guiControlExclusiveMode : {
@@ -116,7 +115,6 @@ graph_update :: proc(graph: ^Graph) {
         }
 
         moveDelta = exp_decay(moveDelta, 0, 16, rl.GetFrameTime()) // this is only if scrolling by keyboard
-        debug_text("moveDelta: ", moveDelta)
         if moveDelta != 0 {
             plotOffset -= remap(f64(0), f64(x_axis_width(graph)), 0, f64(zoomLevel), f64(moveDelta))
         }
@@ -163,44 +161,24 @@ graph_update :: proc(graph: ^Graph) {
     debug_text("pointsPerBucket: ", pointsPerBucket)
     debug_padding()
 
-    mousePosScreenX := rl.GetMousePosition().x
-    mousePosScreenX = clamp(mousePosScreenX, f32(graph.xAxisLine.x0), f32(graph.xAxisLine.x1))
-    mousePosScreenX = remap(f32(graph.xAxisLine.x0), f32(graph.xAxisLine.x1), f32(graph.plotOffset), f32(graph.plotOffset+graph.zoomLevel), mousePosScreenX)
-    debug_text("mousePosScreenX: ", mousePosScreenX)
-
     newMaxValueTarget: f64
     defer {
         maxValueTarget = newMaxValueTarget * 1.1
         graph.maxValue = exp_decay(graph.maxValue, graph.maxValueTarget, 8, rl.GetFrameTime())
     }
 
+    mousePosPlot := rl.GetMousePosition()
     minDistToMouse: f32 = max(f32)
-    if pointsPerBucket == 1 {
-    // if false {
-        pointsBufferSize = i32(loopEnd-loopStart)
-        for i in loopStart..<loopEnd {
-            // finding index of datapoint closest to the mouse
-            distToMouse := abs(f32(data[i][0]) - mousePosScreenX)
-            if minDistToMouse > distToMouse {
-                mouseClosesToIdx = i32(i - loopStart) // -loopStart because we want index of plotted points
-                minDistToMouse = distToMouse
-            }
+    graph_decimate_data(graph, loopStart, loopEnd)
+    for i in 0..<pointsBufferSize {
+        newMaxValueTarget = max(newMaxValueTarget, f64(reducedData[i][1]) / 1_000_000)
+        pointsBuffer[i] = get_point_on_graph(graph, reducedData[i])
 
-            newMaxValueTarget = max(newMaxValueTarget, f64(data[i][1]) / 1_000_000)
-            pointsBuffer[i-loopStart] = get_point_on_graph(graph, data[i])
-        }
-    } else {
-        graph_decimate_data(graph, loopStart, loopEnd)
-        for i in 0..<pointsBufferSize {
-            // finding index of datapoint closest to the mouse
-            distToMouse := abs(f32(reducedData[i][0]) - mousePosScreenX)
-            if minDistToMouse > distToMouse {
-                mouseClosesToIdx = i32(i)
-                minDistToMouse = distToMouse
-            }
-
-            newMaxValueTarget = max(newMaxValueTarget, f64(reducedData[i][1]) / 1_000_000)
-            pointsBuffer[i] = get_point_on_graph(graph, reducedData[i])
+        // finding index of datapoint closest to the mouse
+        distToMouse := rl.Vector2Distance(pointsBuffer[i], mousePosPlot)
+        if minDistToMouse > distToMouse {
+            mouseClosesToIdx = i32(i)
+            minDistToMouse = distToMouse
         }
     }
 }
@@ -269,7 +247,7 @@ graph_draw :: proc(g: ^Graph) {
         // Draw text
         plotDataObject := g.reducedData[g.mouseClosesToIdx]
         xAxisText := fmt.ctprintf("Time: " + FORMAT_H_M_S_MS, clock_from_nanoseconds(i64(plotDataObject[0]) * 1_000_000))
-        yAxisText := fmt.ctprint("Value: ", plotDataObject[0])
+        yAxisText := fmt.ctprint("Value: ", plotDataObject[1] / 1_000_000)
         xPos := i32(widgetRect.x) + 15
         yPos := i32(widgetRect.y) + 15
         rl.DrawText(xAxisText, xPos, yPos, 20, widgetTextColor)
